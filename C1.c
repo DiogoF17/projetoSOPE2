@@ -58,10 +58,20 @@ void validFormat(int argc, char *argv[]){
         printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
         exit(1);
     }
+    
+    //Usar apenas na primeira parte
+    if(validNumber(argv[3]) == 1){
+        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+        exit(1);
+    }
+    
+    /*
+    //Nao e suposto estar na primeira parte
     if(optionalArgs(argv) != 1){
         printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
         exit(1);
     }
+    */
 }
 
 int main(int argc, char *argv[]){
