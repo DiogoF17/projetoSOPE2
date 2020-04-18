@@ -6,11 +6,18 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include <signal.h>
+
+int created = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
+int end = 0;
+time_t begin;
 
 struct ParametrosParaFifo{
-    int identificador; //identificador de cada pedido
-    int tempo; //milisegundos
-    char fifo_resp[100]; //nome do fifo que vai recolher a resposta
+    int i; //identificador de cada pedido
+    int pid;
+    int tid;
+    int dur; //milisegundos
+    int p1;
 };
 
 struct ParametrosParaThread{
@@ -54,28 +61,55 @@ void validFormat(int argc, char *argv[]){
 }
 
 void *thread_func(void *arg){
-    int escritor;
-
-    int time = (rand() % 5) + 1;
-
-    char fifo_resp[100];
-    sprintf(fifo_resp, "/tmp/fifo_resp_%ld", pthread_self());
-
-    struct ParametrosParaFifo argFifo;
-
-    argFifo.identificador = (*(struct ParametrosParaThread *)arg).identificador;
-    argFifo.tempo = time;
-    strcpy(argFifo.fifo_resp, fifo_resp);
+    int escritor = -1, leitor;
     
     do{
         escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
-    }while(escritor == -1);
+    }while(escritor == -1 && created == 0);
 
-    //printf("Lanca %d -- %d -- %s\n", argFifo.identificador, argFifo.tempo, argFifo.fifo_resp);
-    write(escritor, &argFifo, sizeof(struct ParametrosParaFifo));
-    
+    if(escritor != -1){
+        created = 1;
+
+        struct ParametrosParaFifo argFifo;
+
+        argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
+        argFifo.pid = getpid();
+        argFifo.tid = pthread_self();
+        argFifo.dur = (rand() % 5) + 1;
+        argFifo.p1 = -1;
+
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; IWANT\n",
+                time(NULL) - begin, argFifo.i,
+                argFifo.pid, argFifo.tid,
+                argFifo.dur, argFifo.p1);
+        
+        write(escritor, &argFifo, sizeof(struct ParametrosParaFifo));
+
+        close(escritor);
+
+        char file[100];
+        sprintf(file, "/tmp/%d.%d", argFifo.pid, argFifo.tid);
+        mkfifo(file, 0660);
+        leitor = open(file, O_RDONLY);
+        read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
+        if(argFifo.p1 == -1){
+            printf("%ld ; %d ; %d ; %d ; %d ; %d ; CLOSD\n",
+                    time(NULL) - begin, argFifo.i,
+                    argFifo.pid, argFifo.tid,
+                    argFifo.dur, argFifo.p1);
+        }
+        else{
+             printf("%ld ; %d ; %d ; %d ; %d ; %d ; IAMIN\n",
+                    time(NULL) - begin, argFifo.i,
+                    argFifo.pid, argFifo.tid,
+                    argFifo.dur, argFifo.p1);
+        }
+        
+        close(leitor);
+        unlink(file);
+    }
+
     free(arg);
-    close(escritor);
 
     return NULL;
 }
@@ -93,38 +127,40 @@ void find_fifo_name(char *argv[], char *string){
     }
 }
 
+void signalHandler(int signal){
+    end = 1;
+}
+
 int main(int argc, char *argv[]){
+
+    begin = time(NULL);
 
     validFormat(argc, argv);
 
+    signal(SIGALRM, signalHandler);
+    alarm(atoi(argv[2]));
+
     srand(time(NULL));
 
+    int intervalo = (rand() % 100) + 1;
+
     int identificador = 1;
-    double num = 0, numSecs = atoi(argv[2]) * 1000;
     pthread_t tid;
 
     char dirFifoPed[100], fifo_ped[100];
     find_fifo_name(argv, fifo_ped);
     sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
 
-    while(num < numSecs){
-        usleep(50000); //sleep de 50 milisegundo
+    while(!end){
+        usleep(intervalo * 1000);
         
         void * arg = malloc (sizeof(struct ParametrosParaThread));
         (*(struct ParametrosParaThread *) arg).identificador = identificador;
         strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, dirFifoPed);
 
         pthread_create(&tid, NULL, thread_func, arg);
-        num+=50;
         identificador++;
     }
-
-    void * arg = malloc (sizeof(struct ParametrosParaThread));
-    (*(struct ParametrosParaThread *) arg).identificador = 0;
-    strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, dirFifoPed);
-
-    pthread_create(&tid, NULL, thread_func, arg);
-
 
     pthread_exit(0);
 

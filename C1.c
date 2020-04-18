@@ -4,11 +4,19 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <pthread.h>
+#include <signal.h>
+
+int end;
+time_t begin;
+int closed = 0;
 
 struct ParametrosParaFifo{
-    int identificador; //identificador de cada pedido
-    int tempo; //milisegundos
-    char fifo_resp[100]; //nome do fifo que vai recolher a resposta
+    int i; //identificador de cada pedido
+    int pid;
+    int tid;
+    int dur; //milisegundos
+    int p1;
 };
 
 int isZero(char *string){
@@ -92,39 +100,67 @@ void find_fifo_name(char *argv[], char *string){
         }
     }
 }
-/*
+
 void *thread_func(void *arg){
     int escritor;
 
-    int time = (rand() % 5) + 1;
+    printf("%ld ; %d ; %d ; %d ; %d ; %d ; RECVD\n",
+        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
 
-    char fifo_resp[100];
-    sprintf(fifo_resp, "/tmp/fifo_resp_%ld", pthread_self());
+    if(closed){
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; 2LATE\n",
+        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+    }
+    else{
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
+        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+    }
 
-    struct ParametrosParaFifo argFifo;
+    char file[100];
+    sprintf(file, "/tmp/%d.%d", (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid);
 
-    argFifo.identificador = (*(struct ParametrosParaThread *)arg).identificador;
-    argFifo.tempo = time;
-    strcpy(argFifo.fifo_resp, fifo_resp);
-    
     do{
-        escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
-    }while(escritor == -1);
+        escritor = open(file, O_WRONLY);
+    } while(escritor == -1);
 
-    //printf("Lanca %d -- %d -- %s\n", argFifo.identificador, argFifo.tempo, argFifo.fifo_resp);
-    write(escritor, &argFifo, sizeof(struct ParametrosParaFifo));
-    
-    free(arg);
+   // char string[100];
+    //sprintf(string, "Resposta Pedido %d -- %d\n", )
+    if(closed)
+        write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
+    else{
+        (*(struct ParametrosParaFifo *)arg).p1 = 2;
+        write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
+    }
+
+    //printf("Lanca %d -- %d -- %s\n", (*(struct ParametrosParaFifo*) arg).identificador, (*(struct ParametrosParaFifo*) arg).tempo, (*(struct ParametrosParaFifo*) arg).fifo_resp);
+
+    //do{
+
+    //}
     close(escritor);
-
     return NULL;
-}*/
+}
+
+void signalHandler(int signal){
+    end = 1;
+}
 
 int main(int argc, char *argv[]){
+
+    begin = time(NULL);
 
     pthread_t tid;
 
     validFormat(argc, argv);
+
+    signal(SIGALRM, signalHandler);
+    alarm(atoi(argv[2]));
 
     char dirFifoPed[100], fifo_ped[100];
     find_fifo_name(argv, fifo_ped);
@@ -141,19 +177,21 @@ int main(int argc, char *argv[]){
 
         numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
 
-        /*void *arg = malloc(sizeof(struct ParametrosParaFifo));
+        void *arg = malloc(sizeof(struct ParametrosParaFifo));
         *(struct ParametrosParaFifo *)arg = argFifo;
-    
-        pthread_create(&tid, NULL, thread_func, arg);*/
 
-        if(argFifo.identificador != 0)
-            printf("Lanca %d -- %d -- %s\n", argFifo.identificador, argFifo.tempo, argFifo.fifo_resp);
+        if(numLidos != 0)
+            pthread_create(&tid, NULL, thread_func, arg);
 
-    } while(numLidos > 0);
+    } while(!end);
+
+    closed = 1;
 
     close(leitor);
     unlink(dirFifoPed);
 
-    return 0;;
+    //printf("Bathroom is no longer in service!\n");
+
+    pthread_exit(0);
 
 }
