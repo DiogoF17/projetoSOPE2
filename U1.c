@@ -9,15 +9,15 @@
 #include <signal.h>
 
 int created = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
-int end = 0;
-time_t begin;
+int end = 0; //variavel que permite o ciclo
+time_t begin; //instante inicial do programa
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
-    int pid;
-    int tid;
+    int pid; //pid do processo
+    int tid; //tid do processo
     int dur; //milisegundos
-    int p1;
+    int p1; //nº da casa de banho que foi atribuida
 };
 
 struct ParametrosParaThread{
@@ -63,14 +63,16 @@ void validFormat(int argc, char *argv[]){
 void *thread_func(void *arg){
     int escritor = -1, leitor;
     
+    struct ParametrosParaFifo argFifo;
+    
+    //fica a espera que o fifo seja criado caso nao tenha sido criado nenhuma vez
     do{
         escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
     }while(escritor == -1 && created == 0);
 
+    //o fifo ja foi criado
     if(escritor != -1){
         created = 1;
-
-        struct ParametrosParaFifo argFifo;
 
         argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
         argFifo.pid = getpid();
@@ -78,6 +80,7 @@ void *thread_func(void *arg){
         argFifo.dur = (rand() % 5) + 1;
         argFifo.p1 = -1;
 
+        //o cliente faz o pedido ao servidor(casa de banho)
         printf("%ld ; %d ; %d ; %d ; %d ; %d ; IWANT\n",
                 time(NULL) - begin, argFifo.i,
                 argFifo.pid, argFifo.tid,
@@ -87,17 +90,25 @@ void *thread_func(void *arg){
 
         close(escritor);
 
+        //o cliente cria o fifo onde vai receber as respostas do servidor
         char file[100];
         sprintf(file, "/tmp/%d.%d", argFifo.pid, argFifo.tid);
+
         mkfifo(file, 0660);
         leitor = open(file, O_RDONLY);
+
+        //le a resposta do servidor
         read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
+
+        //a casa de banho que foi atribuida ao cliente foi -1 logo ja fechou
+        //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
         if(argFifo.p1 == -1){
             printf("%ld ; %d ; %d ; %d ; %d ; %d ; CLOSD\n",
                     time(NULL) - begin, argFifo.i,
                     argFifo.pid, argFifo.tid,
                     argFifo.dur, argFifo.p1);
         }
+        //foi atribuida uma casa de banho > -1
         else{
              printf("%ld ; %d ; %d ; %d ; %d ; %d ; IAMIN\n",
                     time(NULL) - begin, argFifo.i,
@@ -108,7 +119,23 @@ void *thread_func(void *arg){
         close(leitor);
         unlink(file);
     }
+    //caso o fifo ja tenha sido destruido, ou seja, se a casa de banho ja fechou
+    //o cliente nao teve tempo de fazer o pedido
+    else{
+        
+        argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
+        argFifo.pid = getpid();
+        argFifo.tid = pthread_self();
+        argFifo.dur = (rand() % 5) + 1;
+        argFifo.p1 = -1;
 
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; CLOSD\n",
+                    time(NULL) - begin, argFifo.i,
+                    argFifo.pid, argFifo.tid,
+                    argFifo.dur, argFifo.p1);
+    }
+
+    //libertacao de recursos utilizados
     free(arg);
 
     return NULL;
@@ -128,6 +155,7 @@ void find_fifo_name(char *argv[], char *string){
 }
 
 void signalHandler(int signal){
+    //altera o valor para terminar o ciclo de geracao de pedidos
     end = 1;
 }
 
@@ -135,30 +163,40 @@ int main(int argc, char *argv[]){
 
     begin = time(NULL);
 
+    //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
+    //gera e trata de um alarme para daqui a argv[2] segundos
     signal(SIGALRM, signalHandler);
     alarm(atoi(argv[2]));
 
     srand(time(NULL));
 
+    //intervalo pelo qual se vai gerar pedidos
     int intervalo = (rand() % 100) + 1;
 
     int identificador = 1;
+    
     pthread_t tid;
 
+    //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
     char dirFifoPed[100], fifo_ped[100];
     find_fifo_name(argv, fifo_ped);
     sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
 
     while(!end){
+        //intervalo pelo qual vao ser gerados os pedidos
         usleep(intervalo * 1000);
         
+        //reserva espaco para a passagem de argumentos
         void * arg = malloc (sizeof(struct ParametrosParaThread));
         (*(struct ParametrosParaThread *) arg).identificador = identificador;
         strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, dirFifoPed);
 
+        //cria uma thread para fazer o pedido
         pthread_create(&tid, NULL, thread_func, arg);
+        
+        //identificador de cada pedido
         identificador++;
     }
 

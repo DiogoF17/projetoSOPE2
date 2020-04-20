@@ -7,16 +7,16 @@
 #include <pthread.h>
 #include <signal.h>
 
-int end;
-time_t begin;
-int closed = 0;
+int end = 0; //variavel que permite o ciclo
+time_t begin; //instante inicial do programa
+int closed = 0; //diz-nos se a casa de banho fechou
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
-    int pid;
-    int tid;
+    int pid; //pid do processo
+    int tid; //tid do processo
     int dur; //milisegundos
-    int p1;
+    int p1; //nº da casa de banho que foi atribuida
 };
 
 int isZero(char *string){
@@ -104,17 +104,20 @@ void find_fifo_name(char *argv[], char *string){
 void *thread_func(void *arg){
     int escritor;
 
+    //acusa a rececao do pedido feita pelo cliente
     printf("%ld ; %d ; %d ; %d ; %d ; %d ; RECVD\n",
         time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
         (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
 
+    //diz que o pedido chegou tarde de mais
     if(closed){
         printf("%ld ; %d ; %d ; %d ; %d ; %d ; 2LATE\n",
         time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
         (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
     }
+    //diz que o cliente entrou na casa de banho
     else{
         printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
         time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
@@ -122,32 +125,31 @@ void *thread_func(void *arg){
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
     }
 
+    //nome do fifo usado para a resposta do servidor
     char file[100];
     sprintf(file, "/tmp/%d.%d", (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid);
 
+    //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
     } while(escritor == -1);
 
-   // char string[100];
-    //sprintf(string, "Resposta Pedido %d -- %d\n", )
+    //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
     if(closed)
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
+    //manda para o cliente a resposta com a casa de banho atribuida
     else{
         (*(struct ParametrosParaFifo *)arg).p1 = 2;
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
     }
 
-    //printf("Lanca %d -- %d -- %s\n", (*(struct ParametrosParaFifo*) arg).identificador, (*(struct ParametrosParaFifo*) arg).tempo, (*(struct ParametrosParaFifo*) arg).fifo_resp);
-
-    //do{
-
-    //}
     close(escritor);
+
     return NULL;
 }
 
 void signalHandler(int signal){
+    //altera o valor para terminar o ciclo de tratamento de pedidos
     end = 1;
 }
 
@@ -157,40 +159,46 @@ int main(int argc, char *argv[]){
 
     pthread_t tid;
 
+    //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
+    //gera e trata de um alarme para daqui a argv[2] segundos
     signal(SIGALRM, signalHandler);
     alarm(atoi(argv[2]));
 
+    //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
     char dirFifoPed[100], fifo_ped[100];
     find_fifo_name(argv, fifo_ped);
     sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
 
+    //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(dirFifoPed, 0660);
     int leitor = open(dirFifoPed, O_RDONLY);
 
     struct ParametrosParaFifo argFifo;
 
-    int numLidos;
+    int numLidos; //tamanho de informacao lida no read
 
     do{
 
         numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
 
+        //reserva espaco para a passagem de argumentos
         void *arg = malloc(sizeof(struct ParametrosParaFifo));
         *(struct ParametrosParaFifo *)arg = argFifo;
 
+        //cria uma thread para tratar do pedido
         if(numLidos != 0)
             pthread_create(&tid, NULL, thread_func, arg);
 
     } while(!end);
 
+    //o fifo que era usado para a comunicacao entre o servidor e a casa de banho foi destruido
     closed = 1;
 
+    //fecha e destroi o fifo usado para comunicacao
     close(leitor);
     unlink(dirFifoPed);
-
-    //printf("Bathroom is no longer in service!\n");
 
     pthread_exit(0);
 
