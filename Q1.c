@@ -102,6 +102,11 @@ void find_fifo_name(char *argv[], char *string){
     }
 }
 
+int choose_WC(){
+    n++;
+    return n;
+}
+
 void *thread_func(void *arg){
     int escritor;
 
@@ -133,15 +138,21 @@ void *thread_func(void *arg){
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
     //manda para o cliente a resposta com a casa de banho atribuida
     else{
-        n++;
-        (*(struct ParametrosParaFifo *)arg).p1=n;
+        //atribuicao da casa de banho
+        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();
+        
         //diz que o cliente entrou na casa de banho
         printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
                (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+        
+        //envia a resposta ao cliente a dizer qual a casa de banho atribuida
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
+
+        //tempo de utilizacao da casa de banho
         usleep((*(struct ParametrosParaFifo *)arg).dur*1000);
+
         //diz que o tempo do cliente na casa de banho acabou
         printf("%ld ; %d ; %d ; %d ; %d ; %d ; TIMUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
