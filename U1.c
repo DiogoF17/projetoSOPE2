@@ -21,7 +21,7 @@ struct ParametrosParaFifo{
 };
 
 struct ParametrosParaThread{
-    int identificador; //identificador de cada thread na linha de lanacamento
+    int identificador; //identificador de cada thread na linha de lancamento
     char fifo_ped[100]; //nome do fifo para o qual metemos os parametros
 };
 

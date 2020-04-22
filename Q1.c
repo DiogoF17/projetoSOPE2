@@ -10,6 +10,7 @@
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
+int n=1; //nplaces na casa de banho
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -117,13 +118,6 @@ void *thread_func(void *arg){
         (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
     }
-    //diz que o cliente entrou na casa de banho
-    else{
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
-        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
-        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
-    }
 
     //nome do fifo usado para a resposta do servidor
     char file[100];
@@ -139,8 +133,21 @@ void *thread_func(void *arg){
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
     //manda para o cliente a resposta com a casa de banho atribuida
     else{
-        (*(struct ParametrosParaFifo *)arg).p1 = 2;
+        n++;
+        (*(struct ParametrosParaFifo *)arg).p1=n;
+        //diz que o cliente entrou na casa de banho
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
+               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo));
+        usleep((*(struct ParametrosParaFifo *)arg).dur*1000);
+        //diz que o tempo do cliente na casa de banho acabou
+        printf("%ld ; %d ; %d ; %d ; %d ; %d ; TIMUP\n",
+               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+
     }
 
     close(escritor);
