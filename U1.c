@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <signal.h>
+#include <limits.h>
 
 int created = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
 int end = 0; //variavel que permite o ciclo
@@ -98,7 +99,12 @@ void *thread_func(void *arg){
         leitor = open(file, O_RDONLY);
 
         //le a resposta do servidor
-        read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
+        if(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))==-1){
+            printf("%ld ; %d ; %d ; %d ; %d ; %d ; FAILD\n",
+                time(NULL) - begin, argFifo.i,
+                argFifo.pid, argFifo.tid,
+                argFifo.dur, argFifo.p1);
+        }
 
         //a casa de banho que foi atribuida ao cliente foi -1 logo ja fechou
         //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
@@ -180,7 +186,7 @@ int main(int argc, char *argv[]){
     pthread_t tid;
 
     //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
-    char dirFifoPed[100], fifo_ped[100];
+    char dirFifoPed[PATH_MAX], fifo_ped[100];
     find_fifo_name(argv, fifo_ped);
     sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
 
