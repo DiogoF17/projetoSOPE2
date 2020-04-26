@@ -76,31 +76,24 @@ void validFormat(int argc, char *argv[]){
         exit(1);
     }
     
-    //Usar apenas na primeira parte
-    if(validNumber(argv[3]) == 1){
-        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
-        exit(1);
-    }
     
-    /*
     //Nao e suposto estar na primeira parte
     if(optionalArgs(argv) != 1){
         printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
         exit(1);
     }
-    */
+    
 }
 
 void find_fifo_name(char *argv[], char *string){
     int i = 3;
 
     while(argv[i] != NULL){
-        if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)
-            continue;
-        else{
+        if(!(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)){
             strcpy(string, argv[i]);
             break;
         }
+        i++;
     }
 }
 
@@ -205,6 +198,7 @@ int main(int argc, char *argv[]){
     find_fifo_name(argv, fifo_ped);
     sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
 
+    printf("%s\n", fifo_ped);
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(dirFifoPed, 0660);
     int leitor = open(dirFifoPed, O_RDONLY);

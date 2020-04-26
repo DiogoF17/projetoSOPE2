@@ -151,12 +151,11 @@ void find_fifo_name(char *argv[], char *string){
     int i = 3;
 
     while(argv[i] != NULL){
-        if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)
-            continue;
-        else{
+        if(!(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)){
             strcpy(string, argv[i]);
             break;
         }
+        i++;
     }
 }
 
