@@ -130,7 +130,7 @@ void *thread_func(void *arg){
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
     if(closed){
-        if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo))==-1){
+        if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
              printf("%ld ; %d ; %d ; %d ; %d ; %d ; GAVUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
                (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
@@ -152,7 +152,7 @@ void *thread_func(void *arg){
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         
         //envia a resposta ao cliente a dizer qual a casa de banho atribuida
-        if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo))==-1){
+        if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
             printf("%ld ; %d ; %d ; %d ; %d ; %d ; GAVUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
                (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
@@ -216,8 +216,10 @@ int main(int argc, char *argv[]){
         *(struct ParametrosParaFifo *)arg = argFifo;
 
         //cria uma thread para tratar do pedido
-        if(numLidos != 0)
-            pthread_create(&tid, NULL, thread_func, arg);
+        if(numLidos != 0){
+            if(pthread_create(&tid, NULL, thread_func, arg))
+                perror("pthread create");
+        }
 
     } while(!end);
 

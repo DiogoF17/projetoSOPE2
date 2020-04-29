@@ -87,7 +87,8 @@ void *thread_func(void *arg){
                 argFifo.pid, argFifo.tid,
                 argFifo.dur, argFifo.p1);
         
-        write(escritor, &argFifo, sizeof(struct ParametrosParaFifo));
+        if(write(escritor, &argFifo, sizeof(struct ParametrosParaFifo)) == -1)
+            perror("write");
 
         close(escritor);
 
@@ -199,7 +200,8 @@ int main(int argc, char *argv[]){
         strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, dirFifoPed);
 
         //cria uma thread para fazer o pedido
-        pthread_create(&tid, NULL, thread_func, arg);
+        if(pthread_create(&tid, NULL, thread_func, arg))
+            perror("pthread_create");
         
         //identificador de cada pedido
         identificador++;
