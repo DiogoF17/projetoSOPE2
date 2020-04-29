@@ -17,7 +17,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
     int pid; //pid do processo
-    int tid; //tid do processo
+    unsigned long tid; //tid do processo
     int dur; //milisegundos
     int p1; //nº da casa de banho que foi atribuida
 };
@@ -104,24 +104,30 @@ int choose_WC(){
 
 void *thread_func(void *arg){
     int escritor;
+
+    //nome do fifo usado para a resposta do servidor
+    char file[100];
+    sprintf(file, "/tmp/%d.%ld", (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid);
     
+    (*(struct ParametrosParaFifo*) arg).pid = getpid();
+    (*(struct ParametrosParaFifo*) arg).tid = pthread_self();
+
     //acusa a rececao do pedido feita pelo cliente
-    printf("%ld ; %d ; %d ; %d ; %d ; %d ; RECVD\n",
+    printf("%ld ; %d ; %d ; %ld ; %d ; %d ; RECVD\n",
         time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
 
     //diz que o pedido chegou tarde de mais
     if(closed){
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; 2LATE\n",
+        //Nao entrou logo a duracao foi -1
+        (* (struct ParametrosParaFifo *)arg).dur = -1;
+
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
         time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
     }
-
-    //nome do fifo usado para a resposta do servidor
-    char file[100];
-    sprintf(file, "/tmp/%d.%d", (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid);
 
     //espera que o cliente cria o fifo para a resposta
     do{
@@ -131,9 +137,9 @@ void *thread_func(void *arg){
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
     if(closed){
         if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
-             printf("%ld ; %d ; %d ; %d ; %d ; %d ; GAVUP\n",
+             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         }
     }
@@ -146,16 +152,16 @@ void *thread_func(void *arg){
         pthread_mutex_unlock(&mutex);
 
         //diz que o cliente entrou na casa de banho
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; ENTER\n",
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; ENTER\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         
         //envia a resposta ao cliente a dizer qual a casa de banho atribuida
         if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
-            printf("%ld ; %d ; %d ; %d ; %d ; %d ; GAVUP\n",
+            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         }
 
@@ -163,9 +169,9 @@ void *thread_func(void *arg){
         usleep((*(struct ParametrosParaFifo *)arg).dur*1000);
 
         //diz que o tempo do cliente na casa de banho acabou
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; TIMUP\n",
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; TIMUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (* (struct ParametrosParaFifo *)arg).pid, (* (struct ParametrosParaFifo *)arg).tid,
+               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
 
     }

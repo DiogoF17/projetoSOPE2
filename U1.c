@@ -16,7 +16,7 @@ time_t begin; //instante inicial do programa
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
     int pid; //pid do processo
-    int tid; //tid do processo
+    unsigned long tid; //tid do processo
     int dur; //milisegundos
     int p1; //nº da casa de banho que foi atribuida
 };
@@ -82,7 +82,7 @@ void *thread_func(void *arg){
         argFifo.p1 = -1;
 
         //o cliente faz o pedido ao servidor(casa de banho)
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; IWANT\n",
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IWANT\n",
                 time(NULL) - begin, argFifo.i,
                 argFifo.pid, argFifo.tid,
                 argFifo.dur, argFifo.p1);
@@ -94,33 +94,38 @@ void *thread_func(void *arg){
 
         //o cliente cria o fifo onde vai receber as respostas do servidor
         char file[100];
-        sprintf(file, "/tmp/%d.%d", argFifo.pid, argFifo.tid);
+        sprintf(file, "/tmp/%d.%ld", argFifo.pid, argFifo.tid);
 
         mkfifo(file, 0660);
         leitor = open(file, O_RDONLY);
 
         //le a resposta do servidor
         if(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))==-1){
-            printf("%ld ; %d ; %d ; %d ; %d ; %d ; FAILD\n",
+            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; FAILD\n",
                 time(NULL) - begin, argFifo.i,
                 argFifo.pid, argFifo.tid,
                 argFifo.dur, argFifo.p1);
         }
-
-        //a casa de banho que foi atribuida ao cliente foi -1 logo ja fechou
-        //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
-        if(argFifo.p1 == -1){
-            printf("%ld ; %d ; %d ; %d ; %d ; %d ; CLOSD\n",
-                    time(NULL) - begin, argFifo.i,
-                    argFifo.pid, argFifo.tid,
-                    argFifo.dur, argFifo.p1);
-        }
-        //foi atribuida uma casa de banho > -1
         else{
-             printf("%ld ; %d ; %d ; %d ; %d ; %d ; IAMIN\n",
-                    time(NULL) - begin, argFifo.i,
-                    argFifo.pid, argFifo.tid,
-                    argFifo.dur, argFifo.p1);
+
+            argFifo.pid = getpid();
+            argFifo.tid = pthread_self();
+
+            //a casa de banho que foi atribuida ao cliente foi -1 logo ja fechou
+            //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
+            if(argFifo.p1 == -1){
+                printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
+                        time(NULL) - begin, argFifo.i,
+                        argFifo.pid, argFifo.tid,
+                        argFifo.dur, argFifo.p1);
+            }
+            //foi atribuida uma casa de banho > -1
+            else{
+                printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IAMIN\n",
+                        time(NULL) - begin, argFifo.i,
+                        argFifo.pid, argFifo.tid,
+                        argFifo.dur, argFifo.p1);
+            }
         }
         
         close(leitor);
@@ -133,10 +138,10 @@ void *thread_func(void *arg){
         argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
         argFifo.pid = getpid();
         argFifo.tid = pthread_self();
-        argFifo.dur = (rand() % 5) + 1;
+        argFifo.dur = -1;
         argFifo.p1 = -1;
 
-        printf("%ld ; %d ; %d ; %d ; %d ; %d ; CLOSD\n",
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
                     time(NULL) - begin, argFifo.i,
                     argFifo.pid, argFifo.tid,
                     argFifo.dur, argFifo.p1);
