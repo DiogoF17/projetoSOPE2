@@ -8,11 +8,19 @@
 #include <signal.h>
 #include <limits.h>
 
+int clientEnd = 0;
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
-int n=1; //nplaces na casa de banho
+int numCasasBanho=1; //nplaces na casa de banho
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int t = -1;
+int l = -1;
+int n = -1;
+char fifoName[100];
+
+char *validWords[3] = {"-t", "-n", "-l"};
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -42,32 +50,49 @@ int validNumber(char *string){
     return 1;
 }
 
-int optionalArgs(char *argv[]){
-    int i = 3;
-    while(argv[i] != NULL){
-        if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0){
-            if(validNumber(argv[i-1]) != 1 || validNumber(argv[i+1]) != 1)
-                return 0;
-        }
-        else if(validNumber(argv[i]) == 1){
-            if(validNumber(argv[i-1]) == 1 || validNumber(argv[i+1]) == 1 || argv[i+1] == NULL)
-                return 0;
-        }
-        else{
-            if(validNumber(argv[i-1]) != 1 || argv[i+1] != NULL)
-                return 0;
-        }
-        i++;
+int inValidWords(char *string){
+    for(int i = 0; i < 3; i++){
+        if(strcmp(string, validWords[i]) == 0)
+            return 1;
     }
-    return 1;
+    return 0;
+}
+
+void printInvalidFormat(){
+    printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+    exit(1);
 }
 
 void validFormat(int argc, char *argv[]){
+    int i = 1;
+    
     if(argc < 4 || argc > 8 || argc % 2 != 0){
-        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
-        exit(1);
+        printf("1");
+        printInvalidFormat();
     }
-    if(strcmp(argv[1], "-t") != 0){
+
+    while(i < (argc - 1)){
+        if(inValidWords(argv[i]) == 1){
+            if((i+1) >= (argc-1) || validNumber(argv[i+1]) == 0){
+                printf("2");
+                printInvalidFormat();   
+            }
+        }
+        else if (validNumber(argv[i]) == 1){
+            if(i == 1 || inValidWords(argv[i-1]) == 0){
+                printf("3");
+                printInvalidFormat();
+            }
+        }
+        else{
+            printf("4");
+            printInvalidFormat();
+        }
+        
+        i++;
+    }
+
+    /*if(strcmp(argv[1], "-t") != 0){
         printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
         exit(1);
     }
@@ -81,25 +106,55 @@ void validFormat(int argc, char *argv[]){
     if(optionalArgs(argv) != 1){
         printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
         exit(1);
-    }
+    }*/
     
 }
 
-void find_fifo_name(char *argv[], char *string){
-    int i = 3;
+void find_fifo_name(char *argv[], int argc){
+    if(inValidWords(argv[argc-1]) == 1)
+        printInvalidFormat();
 
-    while(argv[i] != NULL){
-        if(!(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)){
-            strcpy(string, argv[i]);
-            break;
-        }
-        i++;
+    if(strcmp("client", argv[argc-1]) == 0 || strcmp("status", argv[argc-1]) == 0){
+        printf("O nome: %s e usado para outro fifo interno ao programa!\nPor favor escolha outro nome!\n", argv[argc-1]);
+        exit(1);
+    }
+    
+    if(strcpy(fifoName, argv[argc-1]) == NULL){
+        perror("strcpy");
     }
 }
 
+void atribuiValores(char *argv[], int argc){
+    int i = 1;
+    int countT = 0, countN = 0, countL = 0;
+
+    while(i < (argc - 1)){
+        if(inValidWords(argv[i]) == 0){
+            if(strcmp(argv[i-1], "-t") == 0){
+                t = atoi(argv[i]);
+                countT++;
+            }
+            else if(strcmp(argv[i-1], "-n") == 0){
+                n = atoi(argv[i]);
+                countN++;
+            }
+            else{
+                l = atoi(argv[i]);
+                countL++;
+            }
+        }
+
+        i++;
+    }
+    
+    if(countT > 1 || countN > 1 || countL > 1|| countT == 0)
+        printInvalidFormat();
+
+}
+
 int choose_WC(){
-    n++;
-    return n;
+    numCasasBanho++;
+    return numCasasBanho;
 }
 
 void *thread_func(void *arg){
@@ -181,33 +236,96 @@ void *thread_func(void *arg){
     return NULL;
 }
 
+void writeDestroyed(){
+    int escritor;
+    
+    mkfifo("status", 0660);
+    do{
+        escritor = open("status", O_WRONLY | O_NONBLOCK);
+   }while(escritor == -1);
+
+    if(escritor != -1){
+        if(write(escritor, "destroyed", 9) == -1)
+            perror("write");
+
+        close(escritor);
+    }
+}
+
+void readClientEnd(int leitor){
+    char string[10];
+
+    do{
+        if(read(leitor, string, 4) == -1)
+            perror("read");
+    }while(strcmp("end", string) != 0);
+
+    clientEnd = 1;
+
+    close(leitor);
+}
+
 void signalHandler(int signal){
     //altera o valor para terminar o ciclo de tratamento de pedidos
     end = 1;
+
+    int leitor = open("client", O_RDONLY | O_NONBLOCK);
+    
+    if(leitor != -1){
+        char string[10];
+        if(read(leitor, string, 4) == -1)
+            perror("read");
+        if(strcmp("end", string) == 0)
+            clientEnd = 1;
+
+        close(leitor);
+    }
+
+    if(!clientEnd)
+        writeDestroyed();
+    
+}
+
+void* verifyClientEnd(void *arg){
+    int leitor;
+
+    do{
+        leitor = open("client", O_RDONLY);
+    }while(leitor == -1 && !end);
+
+    if(leitor != -1 && !clientEnd)
+        readClientEnd(leitor);
+    
+    unlink("client");
+
+    return NULL;
 }
 
 int main(int argc, char *argv[]){
 
     begin = time(NULL);
 
-    pthread_t tid;
+    pthread_t tid, tidClienteEnd;
 
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
-    //gera e trata de um alarme para daqui a argv[2] segundos
-    signal(SIGALRM, signalHandler);
-    alarm(atoi(argv[2]));
+    //vai buscar os valores para atribuir a n, t e l
+    atribuiValores(argv, argc);
 
     //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
-    char dirFifoPed[PATH_MAX], fifo_ped[100];
-    find_fifo_name(argv, fifo_ped);
-    sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
+    find_fifo_name(argv, argc);
 
-    printf("%s\n", fifo_ped);
+    //gera e trata de um alarme para daqui a argv[2] segundos
+    signal(SIGALRM, signalHandler);
+    alarm(t);
+
+    if(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL))
+        perror("pthread_create");
+
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
-    mkfifo(dirFifoPed, 0660);
-    int leitor = open(dirFifoPed, O_RDONLY);
+    mkfifo(fifoName, 0660);
+    int leitor = open(fifoName, O_RDONLY);
 
     struct ParametrosParaFifo argFifo;
 
@@ -234,7 +352,7 @@ int main(int argc, char *argv[]){
 
     //fecha e destroi o fifo usado para comunicacao
     close(leitor);
-    unlink(dirFifoPed);
+    unlink(fifoName);
 
     pthread_exit(0);
 

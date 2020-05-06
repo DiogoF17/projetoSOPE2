@@ -9,9 +9,12 @@
 #include <signal.h>
 #include <limits.h>
 
-int created = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
+int destroyed = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
+
+int t = -1;
+char fifoName[100];
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -46,19 +49,30 @@ int validNumber(char *string){
     return 1;
 }
 
+void printInvalidFormat(){
+    printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+    exit(1);
+}
+
 void validFormat(int argc, char *argv[]){
-    if(argc != 4 || argc % 2 == 1){
-        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+    if(argc != 4 || argc % 2 == 1)
+        printInvalidFormat();
+    if(strcmp(argv[1], "-t") != 0)
+        printInvalidFormat();
+    if(validNumber(argv[2]) != 1)
+        printInvalidFormat();
+
+    t = atoi(argv[2]);
+
+    if(strcmp(argv[3], "-t") == 0 || strcmp(argv[3], "-n") == 0 || strcmp(argv[3], "-l") == 0)
+        printInvalidFormat();
+
+    if(strcmp("client", argv[argc-1]) == 0 || strcmp("status", argv[argc-1]) == 0){
+        printf("O nome: %s e usado para outro fifo interno ao programa!\nPor favor escolha outro nome!\n", argv[argc-1]);
         exit(1);
     }
-    if(strcmp(argv[1], "-t") != 0){
-        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
-        exit(1);
-    }
-    if(validNumber(argv[2]) != 1 || validNumber(argv[3]) == 1){
-        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
-        exit(1);
-    }
+
+    strcpy(fifoName, argv[3]);    
 }
 
 void *thread_func(void *arg){
@@ -69,12 +83,10 @@ void *thread_func(void *arg){
     //fica a espera que o fifo seja criado caso nao tenha sido criado nenhuma vez
     do{
         escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
-    }while(escritor == -1 && created == 0);
+    }while(escritor == -1 && destroyed == 0);
 
     //o fifo ja foi criado
     if(escritor != -1){
-        created = 1;
-
         argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
         argFifo.pid = getpid();
         argFifo.tid = pthread_self();
@@ -114,7 +126,7 @@ void *thread_func(void *arg){
             //a casa de banho que foi atribuida ao cliente foi -1 logo ja fechou
             //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
             if(argFifo.p1 == -1){
-                printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
+                printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD1\n",
                         time(NULL) - begin, argFifo.i,
                         argFifo.pid, argFifo.tid,
                         argFifo.dur, argFifo.p1);
@@ -133,7 +145,7 @@ void *thread_func(void *arg){
     }
     //caso o fifo ja tenha sido destruido, ou seja, se a casa de banho ja fechou
     //o cliente nao teve tempo de fazer o pedido
-    else{
+    else if(destroyed == 1){
         
         argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
         argFifo.pid = getpid();
@@ -141,11 +153,13 @@ void *thread_func(void *arg){
         argFifo.dur = -1;
         argFifo.p1 = -1;
 
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD2\n",
                     time(NULL) - begin, argFifo.i,
                     argFifo.pid, argFifo.tid,
                     argFifo.dur, argFifo.p1);
     }
+    else
+        printf("Ainda nao foi criado!\n");
 
     //libertacao de recursos utilizados
     free(arg);
@@ -153,21 +167,65 @@ void *thread_func(void *arg){
     return NULL;
 }
 
-void find_fifo_name(char *argv[], char *string){
-    int i = 3;
+void writeClientEnd(){
+    int escritor;
+    mkfifo("client", 0660);
+    do{
+        escritor = open("client", O_WRONLY | O_NONBLOCK);
+    }while(escritor == -1);
 
-    while(argv[i] != NULL){
-        if(!(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "-n") == 0 || validNumber(argv[i]) == 1)){
-            strcpy(string, argv[i]);
-            break;
-        }
-        i++;
-    }
+    if(write(escritor, "end", 3) == -1)
+        perror("write");
+
+    close(escritor);
+}
+
+void readDestroyed(int leitor){
+    char string[10];
+
+    do{
+        if(read(leitor, string, 10) == -1)
+            perror("read");
+    }while(strcmp("destroyed", string) != 0);
+
+    destroyed = 1;
+
+    close(leitor);
 }
 
 void signalHandler(int signal){
     //altera o valor para terminar o ciclo de geracao de pedidos
     end = 1;
+
+    int leitor = open("status", O_RDONLY | O_NONBLOCK);
+    
+    if(leitor != -1){
+        char string[10];
+        if(read(leitor, string, 10) == -1)
+            perror("read");
+        if(strcmp("destroyed", string) == 0)
+            destroyed = 1;
+
+        close(leitor);
+    }
+
+    if(!destroyed)
+        writeClientEnd();
+}
+
+void* verifyDestroyed(void *arg){
+    int leitor;
+
+    do{
+        leitor = open("status", O_RDONLY);
+    }while(leitor == -1 && !end);
+
+    if(leitor != -1 && !destroyed)
+        readDestroyed(leitor);
+    
+    unlink("status");
+
+    return NULL;
 }
 
 int main(int argc, char *argv[]){
@@ -176,6 +234,7 @@ int main(int argc, char *argv[]){
 
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
+
 
     //gera e trata de um alarme para daqui a argv[2] segundos
     signal(SIGALRM, signalHandler);
@@ -188,12 +247,12 @@ int main(int argc, char *argv[]){
 
     int identificador = 1;
     
-    pthread_t tid;
+    pthread_t tid, tidStatus;
 
-    //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
-    char dirFifoPed[PATH_MAX], fifo_ped[100];
-    find_fifo_name(argv, fifo_ped);
-    sprintf(dirFifoPed, "/tmp/%s", fifo_ped);
+    //thread que vai durante o program verificar se a casa de banho fechou
+    //quando tiver fechado ativa a flag destroyed e abandona a thread
+    if(pthread_create(&tidStatus, NULL, verifyDestroyed, NULL))
+        perror("pthread_create");
 
     while(!end){
         //intervalo pelo qual vao ser gerados os pedidos
@@ -202,7 +261,7 @@ int main(int argc, char *argv[]){
         //reserva espaco para a passagem de argumentos
         void * arg = malloc (sizeof(struct ParametrosParaThread));
         (*(struct ParametrosParaThread *) arg).identificador = identificador;
-        strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, dirFifoPed);
+        strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, fifoName);
 
         //cria uma thread para fazer o pedido
         if(pthread_create(&tid, NULL, thread_func, arg))
