@@ -41,7 +41,7 @@ int isZero(char *string){
 int validNumber(char *string){
     if(string == NULL)
         return 0;
-    if(strcmp(string, "") == 0 || isZero(string) == 1)
+    if(strcmp(string, "") == 0 || isZero(string))
         return 0;
     for(int i = 0; i < strlen(string); i++){
         if (string[i] < 48 || string[i] > 57)
@@ -66,47 +66,23 @@ void printInvalidFormat(){
 void validFormat(int argc, char *argv[]){
     int i = 1;
     
-    if(argc < 4 || argc > 8 || argc % 2 != 0){
-        printf("1");
+    if(argc < 4 || argc > 8 || argc % 2 != 0)
         printInvalidFormat();
-    }
 
     while(i < (argc - 1)){
         if(inValidWords(argv[i]) == 1){
-            if((i+1) >= (argc-1) || validNumber(argv[i+1]) == 0){
-                printf("2");
+            if((i+1) >= (argc-1) || validNumber(argv[i+1]) == 0)
                 printInvalidFormat();   
-            }
         }
         else if (validNumber(argv[i]) == 1){
-            if(i == 1 || inValidWords(argv[i-1]) == 0){
-                printf("3");
+            if(i == 1 || inValidWords(argv[i-1]) == 0)
                 printInvalidFormat();
-            }
         }
-        else{
-            printf("4");
+        else
             printInvalidFormat();
-        }
         
         i++;
     }
-
-    /*if(strcmp(argv[1], "-t") != 0){
-        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
-        exit(1);
-    }
-    if(validNumber(argv[2]) != 1){
-        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
-        exit(1);
-    }
-    
-    
-    //Nao e suposto estar na primeira parte
-    if(optionalArgs(argv) != 1){
-        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
-        exit(1);
-    }*/
     
 }
 
@@ -307,6 +283,8 @@ int main(int argc, char *argv[]){
 
     pthread_t tid, tidClienteEnd;
 
+    int leitor;
+
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
@@ -316,7 +294,7 @@ int main(int argc, char *argv[]){
     //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
     find_fifo_name(argv, argc);
 
-    //gera e trata de um alarme para daqui a argv[2] segundos
+    //gera e trata de um alarme para daqui a t segundos
     signal(SIGALRM, signalHandler);
     alarm(t);
 
@@ -325,13 +303,13 @@ int main(int argc, char *argv[]){
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);
-    int leitor = open(fifoName, O_RDONLY);
+    leitor = open(fifoName, O_RDONLY);
 
     struct ParametrosParaFifo argFifo;
 
     int numLidos; //tamanho de informacao lida no read
 
-    do{
+    while(!end){
 
         numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
 
@@ -345,7 +323,7 @@ int main(int argc, char *argv[]){
                 perror("pthread create");
         }
 
-    } while(!end);
+    } 
 
     //o fifo que era usado para a comunicacao entre o servidor e a casa de banho foi destruido
     closed = 1;
