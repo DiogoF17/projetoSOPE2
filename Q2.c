@@ -13,7 +13,9 @@ int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
 int numCasasBanho=1; //nplaces na casa de banho
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t entra = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sai = PTHREAD_MUTEX_INITIALIZER;
+int arrWC[];
 
 int t = -1;
 int l = -1;
@@ -129,6 +131,10 @@ void atribuiValores(char *argv[], int argc){
             }
             else if(strcmp(argv[i-1], "-n") == 0){
                 n = atoi(argv[i]);
+                //inicialização do array
+                for(int i=0; i<n; i++){
+                    arrWC[i]=0;
+                }
                 countN++;
             }
             else{
@@ -148,8 +154,16 @@ void atribuiValores(char *argv[], int argc){
 }
 
 int choose_WC(){
-    numCasasBanho++;
-    return numCasasBanho;
+    while(1) {
+        //verifica se alguma casa de banho está livre (a 0) e coloca ocupado (a 1) e retorna o numero da casa de banho (i)
+        for (int i = 0; i < n; i++) {
+            //printf("\n%d\n\n",i);
+            if (arrWC[i] == 0) {
+                arrWC[i] = 1;
+                return i;
+            }
+        }
+    }
 }
 
 void *thread_func(void *arg){
@@ -196,10 +210,10 @@ void *thread_func(void *arg){
     //manda para o cliente a resposta com a casa de banho atribuida
     else{
 
-        pthread_mutex_lock(&mutex);
-        //atribuicao da casa de banho
-        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();
-        pthread_mutex_unlock(&mutex);
+        //atribui o numero da casa de banho
+        pthread_mutex_lock(&entra);
+        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();;
+        pthread_mutex_unlock(&entra);
 
         //diz que o cliente entrou na casa de banho
         printf("%ld ; %d ; %d ; %ld ; %d ; %d ; ENTER\n",
@@ -215,8 +229,14 @@ void *thread_func(void *arg){
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         }
 
+
         //tempo de utilizacao da casa de banho
         usleep((*(struct ParametrosParaFifo *)arg).dur*1000);
+
+        //coloca o numero da casa de banho livre
+        pthread_mutex_lock(&sai);
+        arrWC[(*(struct ParametrosParaFifo *)arg).p1]=0;
+        pthread_mutex_unlock(&sai);
 
         //diz que o tempo do cliente na casa de banho acabou
         printf("%ld ; %d ; %d ; %ld ; %d ; %d ; TIMUP\n",
