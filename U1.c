@@ -16,6 +16,8 @@ time_t begin; //instante inicial do programa
 int t = -1;
 char fifoName[100];
 
+int threadVerifyWorking = 0;
+
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
     int pid; //pid do processo
@@ -29,19 +31,24 @@ struct ParametrosParaThread{
     char fifo_ped[100]; //nome do fifo para o qual metemos os parametros
 };
 
-int isZero(char *string){
-    for(int i = 0; i < strlen(string); i++){
-        if(string[i] != 48)
-            return 0;
-    }
-    return 1;
-}
-
 int validNumber(char *string){
     if(string == NULL)
         return 0;
-    if(strcmp(string, "") == 0 || isZero(string))
+    if(strcmp(string, "") == 0)
         return 0;
+
+    int zero = 1;
+
+    for(int i = 0; i < strlen(string); i++){
+        if(string[i] != 48){ //48->code of '0'
+            zero = 0;
+            break;
+        }
+    }
+    
+    if(zero == 1)
+        return 0;
+
     for(int i = 0; i < strlen(string); i++){
         if (string[i] < 48 || string[i] > 57)
             return 0;
@@ -49,25 +56,28 @@ int validNumber(char *string){
     return 1;
 }
 
-void printInvalidFormat(){
-    printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
-    exit(1);
-}
-
 void validFormat(int argc, char *argv[]){
-    if(argc != 4 || argc % 2 == 1)
-        printInvalidFormat();
-    if(strcmp(argv[1], "-t") != 0)
-        printInvalidFormat();
-    if(validNumber(argv[2]) != 1)
-        printInvalidFormat();
+    if(argc != 4 || argc % 2 == 1){
+        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+        exit(1);
+    }
+    if(strcmp(argv[1], "-t") != 0){
+        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+        exit(1);
+    }
+    if(validNumber(argv[2]) != 1){
+        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+        exit(1);
+    }
 
     t = atoi(argv[2]);
 
-    if(strcmp(argv[3], "-t") == 0 || strcmp(argv[3], "-n") == 0 || strcmp(argv[3], "-l") == 0)
-        printInvalidFormat();
+    if(strcmp(argv[3], "-t") == 0 || strcmp(argv[3], "-n") == 0 || strcmp(argv[3], "-l") == 0){
+        printf("Invalid Format!\nFormat: Un <-t nsecs> fifoname\n");
+        exit(1);
+    }
 
-    if(strcmp("client", argv[argc-1]) == 0 || strcmp("status", argv[argc-1]) == 0){
+    if(strcmp("clientStatus", argv[argc-1]) == 0 || strcmp("bathroomStatus", argv[argc-1]) == 0){
         printf("O nome: %s e usado para outro fifo interno ao programa!\nPor favor escolha outro nome!\n", argv[argc-1]);
         exit(1);
     }
@@ -79,26 +89,6 @@ void *thread_func(void *arg){
     int escritor = -1, leitor;
     
     struct ParametrosParaFifo argFifo;
-
-    //-----------------------
-/*
-    if(!destroyed){
-
-        int leitor1 = open("status", O_RDONLY | O_NONBLOCK);
-        
-        if(leitor1 != -1){
-            char string[10];
-            if(read(leitor1, string, 10) == -1)
-                perror("read");
-            if(strcmp("destroyed", string) == 0)
-                destroyed = 1;
-
-            close(leitor1);
-        }
-
-    }
-    else
-        unlink("status");*/
 
     //---------------
     
@@ -117,15 +107,15 @@ void *thread_func(void *arg){
         argFifo.p1 = -1;
 
         //o cliente faz o pedido ao servidor(casa de banho)
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IWANT\n",
-                time(NULL) - begin, argFifo.i,
-                argFifo.pid, argFifo.tid,
-                argFifo.dur, argFifo.p1);
-        
         if(write(escritor, &argFifo, sizeof(struct ParametrosParaFifo)) == -1)
             perror("write");
 
         close(escritor);
+
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IWANT\n",
+                time(NULL) - begin, argFifo.i,
+                argFifo.pid, argFifo.tid,
+                argFifo.dur, argFifo.p1);
 
         //o cliente cria o fifo onde vai receber as respostas do servidor
         char file[100];
@@ -166,6 +156,7 @@ void *thread_func(void *arg){
         close(leitor);
         unlink(file);
     }
+    /*
     //caso o fifo ja tenha sido destruido, ou seja, se a casa de banho ja fechou
     //o cliente nao teve tempo de fazer o pedido
     else if(destroyed == 1){
@@ -180,7 +171,7 @@ void *thread_func(void *arg){
                     time(NULL) - begin, argFifo.i,
                     argFifo.pid, argFifo.tid,
                     argFifo.dur, argFifo.p1);
-    }
+    }*/
 
     //libertacao de recursos utilizados
     free(arg);
@@ -188,63 +179,47 @@ void *thread_func(void *arg){
     return NULL;
 }
 
-void writeClientEnd(){
-    int escritor;
-    mkfifo("client", 0660);
-    do{
-        escritor = open("client", O_WRONLY | O_NONBLOCK);
-    }while(escritor == -1);
-
-    if(write(escritor, "end", 3) == -1)
-        perror("write");
-
-    close(escritor);
-}
-
-void readDestroyed(int leitor){
-    char string[10];
-
-    do{
-        if(read(leitor, string, 10) == -1)
-            perror("read");
-    }while(strcmp("destroyed", string) != 0);
-
-    destroyed = 1;
-
-    close(leitor);
-}
-
 void signalHandler(int signal){
     //altera o valor para terminar o ciclo de geracao de pedidos
     end = 1;
 
-    int leitor = open("status", O_RDONLY | O_NONBLOCK);
-    
-    if(leitor != -1){
-        char string[10];
-        if(read(leitor, string, 10) == -1)
-            perror("read");
-        if(strcmp("destroyed", string) == 0)
-            destroyed = 1;
+    //caso a casa de banho nao tenha terminado
+    //e escrito no fifo do status da casa do cliente
+    //que este ja terminou a geracao de pedidos
+    if(!destroyed){
+        mkfifo("clientStatus", 0660);
+        int escritor = open("clientStatus", O_WRONLY);
+        
+        if(write(escritor, "end", 3) == -1)
+            perror("write");
 
-        close(leitor);
+        close(escritor);
     }
-
-    if(!destroyed)
-        writeClientEnd();
 }
 
 void* verifyDestroyed(void *arg){
+    threadVerifyWorking = 1;
+    
     int leitor;
 
     do{
-        leitor = open("status", O_RDONLY | O_NONBLOCK);
-    }while(leitor == -1 && !end);
+        leitor = open("bathroomStatus", O_RDONLY);
+    }while(leitor == -1 && !end && !destroyed);
 
-    if(leitor != -1 && !destroyed)
-        readDestroyed(leitor);
+    if(leitor != -1 && !destroyed){
+        char string[10];
+
+        do{
+            if(read(leitor, string, 10) == -1)
+                perror("read1");
+        }while(strcmp("destroyed", string) != 0);
+
+        destroyed = 1;
+
+        close(leitor);
+    }
     
-    unlink("status");
+    unlink("bathroomStatus");
 
     return NULL;
 }
@@ -263,13 +238,13 @@ int main(int argc, char *argv[]){
     srand(time(NULL));
 
     //intervalo pelo qual se vai gerar pedidos
-    int intervalo = (rand() % 100) + 1;
+    int intervalo = (rand() % 10) + 1;
 
     int identificador = 1;
     
     pthread_t tid, tidStatus;
 
-    //thread que vai durante o program verificar se a casa de banho fechou
+    //thread que vai durante o programa verificar se a casa de banho fechou
     //quando tiver fechado ativa a flag destroyed e abandona a thread
     if(pthread_create(&tidStatus, NULL, verifyDestroyed, NULL))
         perror("pthread_create");
@@ -289,21 +264,6 @@ int main(int argc, char *argv[]){
         
         //identificador de cada pedido
         identificador++;
-
-    /* if(destroyed == 0){
-            int leitor = leitor = open("status", O_RDONLY | O_NONBLOCK);
-
-            if(leitor != -1){
-                char string[10];
-                if(read(leitor, string, 10) == -1)
-                    perror("read");
-
-                if(strcmp("destroyed", string) == 0){
-                    destroyed = 1;
-                    unlink("status");
-                }
-            }
-        }*/
     }
 
     pthread_exit(0);

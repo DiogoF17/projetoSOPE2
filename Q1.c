@@ -20,6 +20,8 @@ int l = -1;
 int n = -1;
 char fifoName[100];
 
+int threadVerifyWorking = 0;
+
 char *validWords[3] = {"-t", "-n", "-l"};
 
 struct ParametrosParaFifo{
@@ -30,21 +32,26 @@ struct ParametrosParaFifo{
     int p1; //nº da casa de banho que foi atribuida
 };
 
-int isZero(char *string){
-    for(int i = 0; i < strlen(string); i++){
-        if(string[i] != 48)
-            return 0;
-    }
-    return 1;
-}
-
 int validNumber(char *string){
     if(string == NULL)
         return 0;
-    if(strcmp(string, "") == 0 || isZero(string))
+    if(strcmp(string, "") == 0)
         return 0;
+
+    int zero = 1;
+
     for(int i = 0; i < strlen(string); i++){
-        if (string[i] < 48 || string[i] > 57)
+        if(string[i] != 48){//48->code of '0'
+            zero = 0;
+            break;
+        }
+    }
+    
+    if(zero == 1)
+        return 0;
+
+    for(int i = 0; i < strlen(string); i++){
+        if (string[i] < 48 || string[i] > 57) //48->code of '0', 57->code of '9'
             return 0;
     }
     return 1;
@@ -66,20 +73,28 @@ void printInvalidFormat(){
 void validFormat(int argc, char *argv[]){
     int i = 1;
     
-    if(argc < 4 || argc > 8 || argc % 2 != 0)
-        printInvalidFormat();
+    if(argc < 4 || argc > 8 || argc % 2 != 0){
+        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+        exit(1);
+    }
 
     while(i < (argc - 1)){
         if(inValidWords(argv[i]) == 1){
-            if((i+1) >= (argc-1) || validNumber(argv[i+1]) == 0)
-                printInvalidFormat();   
+            if((i+1) >= (argc-1) || validNumber(argv[i+1]) == 0){
+                printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+                exit(1);
+            } 
         }
         else if (validNumber(argv[i]) == 1){
-            if(i == 1 || inValidWords(argv[i-1]) == 0)
-                printInvalidFormat();
+            if(i == 1 || inValidWords(argv[i-1]) == 0){
+                printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+                exit(1);
+            }
         }
-        else
-            printInvalidFormat();
+        else{
+            printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+            exit(1);
+        }
         
         i++;
     }
@@ -87,10 +102,12 @@ void validFormat(int argc, char *argv[]){
 }
 
 void find_fifo_name(char *argv[], int argc){
-    if(inValidWords(argv[argc-1]) == 1)
-        printInvalidFormat();
+    if(inValidWords(argv[argc-1]) == 1){
+        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+        exit(1);
+    }
 
-    if(strcmp("client", argv[argc-1]) == 0 || strcmp("status", argv[argc-1]) == 0){
+    if(strcmp("clientStatus", argv[argc-1]) == 0 || strcmp("bathroomStatus", argv[argc-1]) == 0){
         printf("O nome: %s e usado para outro fifo interno ao programa!\nPor favor escolha outro nome!\n", argv[argc-1]);
         exit(1);
     }
@@ -123,8 +140,10 @@ void atribuiValores(char *argv[], int argc){
         i++;
     }
     
-    if(countT > 1 || countN > 1 || countL > 1|| countT == 0)
-        printInvalidFormat();
+    if(countT > 1 || countN > 1 || countL > 1|| countT == 0){
+        printf("Invalid Format!\nFormat: Qn <-t nsecs> [-l nplaces] [-n nthreads] fifoname\n");
+        exit(1);
+    }
 
 }
 
@@ -212,67 +231,51 @@ void *thread_func(void *arg){
     return NULL;
 }
 
-void writeDestroyed(){
-    int escritor;
-    
-    mkfifo("status", 0660);
-    do{
-        escritor = open("status", O_WRONLY | O_NONBLOCK);
-   }while(escritor == -1);
+void signalHandler(int signal){
+    //altera o valor para terminar o ciclo de tratamento de pedidos
+    end = 1;
 
-    if(escritor != -1){
+    //o fifo que era usado para a comunicacao entre o servidor e a casa de banho foi destruido
+    closed = 1;
+
+    //caso o cliente nao tenha terminado
+    //e escrito no fifo do status da casa de banho
+    //que esta ja terminou 
+    if(!clientEnd){
+        mkfifo("bathroomStatus", 0660);
+        int escritor = open("bathroomStatus", O_WRONLY);
+
         if(write(escritor, "destroyed", 9) == -1)
             perror("write");
 
         close(escritor);
     }
-}
-
-void readClientEnd(int leitor){
-    char string[10];
-
-    do{
-        if(read(leitor, string, 4) == -1)
-            perror("read");
-    }while(strcmp("end", string) != 0);
-
-    clientEnd = 1;
-
-    close(leitor);
-}
-
-void signalHandler(int signal){
-    //altera o valor para terminar o ciclo de tratamento de pedidos
-    end = 1;
-
-    int leitor = open("client", O_RDONLY | O_NONBLOCK);
-    
-    if(leitor != -1){
-        char string[10];
-        if(read(leitor, string, 4) == -1)
-            perror("read");
-        if(strcmp("end", string) == 0)
-            clientEnd = 1;
-
-        close(leitor);
-    }
-
-    if(!clientEnd)
-        writeDestroyed();
     
 }
 
 void* verifyClientEnd(void *arg){
+    threadVerifyWorking = 1;
+
     int leitor;
 
     do{
-        leitor = open("client", O_RDONLY);
-    }while(leitor == -1 && !end);
+        leitor = open("clientStatus", O_RDONLY);
+    }while(leitor == -1 && !end && !clientEnd);
 
-    if(leitor != -1 && !clientEnd)
-        readClientEnd(leitor);
+    if(leitor != -1 && !clientEnd){
+        char string[4];
+        strcpy(string, "");
+        do{
+            if(read(leitor, string, 4) == -1)
+                perror("read");
+        }while(strcmp("end", string) != 0);
+
+        clientEnd = 1;
+
+        close(leitor);
+    }
     
-    unlink("client");
+    unlink("clientStatus");
 
     return NULL;
 }
@@ -298,6 +301,8 @@ int main(int argc, char *argv[]){
     signal(SIGALRM, signalHandler);
     alarm(t);
 
+    //thread que vai verificar se o cliente terminou a geracao de pedidos
+    //se sim entao nao e necessario escrever quando se destruir
     if(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL))
         perror("pthread_create");
 
@@ -318,15 +323,24 @@ int main(int argc, char *argv[]){
         *(struct ParametrosParaFifo *)arg = argFifo;
 
         //cria uma thread para tratar do pedido
-        if(numLidos != 0){
+        if(numLidos > 0){
             if(pthread_create(&tid, NULL, thread_func, arg))
                 perror("pthread create");
         }
-
     } 
 
-    //o fifo que era usado para a comunicacao entre o servidor e a casa de banho foi destruido
-    closed = 1;
+    //esvazia o fifo com eventuais pedidos que tenham restado
+    while(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo)) > 0){
+        //reserva espaco para a passagem de argumentos
+        void *arg = malloc(sizeof(struct ParametrosParaFifo));
+        *(struct ParametrosParaFifo *)arg = argFifo;
+
+        //cria uma thread para tratar do pedido
+        if(numLidos > 0){
+            if(pthread_create(&tid, NULL, thread_func, arg))
+                perror("pthread create");
+        }
+    }
 
     //fecha e destroi o fifo usado para comunicacao
     close(leitor);
