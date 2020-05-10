@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <limits.h>
+#include<semaphore.h>
 
 #define NUM_MAX_BATHROOM 10000
 
@@ -15,9 +16,9 @@ int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
 int numCasasBanho=1; //nplaces na casa de banho
-pthread_mutex_t entra = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t sai = PTHREAD_MUTEX_INITIALIZER;
 
+sem_t sem;
+sem_t sem1;
 int arrWC[NUM_MAX_BATHROOM];
 
 int t = -1;
@@ -157,19 +158,25 @@ void atribuiValores(char *argv[], int argc){
         exit(1);
     }
 
+    if(n==-1){
+        n = NUM_MAX_BATHROOM;
+    }
+
 }
 
-int choose_WC(){
-    while(1) {
-        //verifica se alguma casa de banho está livre (a 0) e coloca ocupado (a 1) e retorna o numero da casa de banho (i)
-        for (int i = 0; i < n; i++) {
-            //printf("\n%d\n\n",i);
-            if (arrWC[i] == 0) {
-                arrWC[i] = 1;
-                return i;
-            }
+int choose_WC() {
+    if (end) {
+        return -1;
+    }
+    //verifica se alguma casa de banho está livre (a 0) e coloca ocupado (a 1) e retorna o numero da casa de banho (i)
+    for (int i = 0; i < n; i++) {
+        //printf("\n%d\n\n",i);
+        if (arrWC[i] == 0) {
+            arrWC[i] = 1;
+            return i;
         }
     }
+
 }
 
 void *thread_func(void *arg){
@@ -217,39 +224,48 @@ void *thread_func(void *arg){
     else{
 
         //atribui o numero da casa de banho
-        pthread_mutex_lock(&entra);
-        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();
-        pthread_mutex_unlock(&entra);
+        sem_wait(&sem);
+        sem_wait(&sem1);
+        int wc=choose_WC();
+        (*(struct ParametrosParaFifo *)arg).p1 = wc;
+        sem_post(&sem1);
 
-        //diz que o cliente entrou na casa de banho
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; ENTER\n",
-               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
-        
-        //envia a resposta ao cliente a dizer qual a casa de banho atribuida
-        if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
-            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
-               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+        if(wc==-1){
+            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
+                   time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+                   (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
+                   (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         }
+        else {
+            //diz que o cliente entrou na casa de banho
+            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; ENTER\n",
+                   time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
+                   (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
+                   (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+
+            //envia a resposta ao cliente a dizer qual a casa de banho atribuida
+            if (write(escritor, (struct ParametrosParaFifo *) arg, sizeof(struct ParametrosParaFifo)) == -1) {
+                printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
+                       time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
+                       (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
+                       (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+            }
 
 
-        //tempo de utilizacao da casa de banho
-        usleep((*(struct ParametrosParaFifo *)arg).dur*1000);
+            //tempo de utilizacao da casa de banho
+            usleep((*(struct ParametrosParaFifo *) arg).dur * 1000);
+            //coloca o numero da casa de banho livre
+            sem_wait(&sem1);
+            arrWC[(*(struct ParametrosParaFifo *) arg).p1] = 0;
+            sem_post(&sem1);
+            sem_post(&sem);
 
-        //coloca o numero da casa de banho livre
-        pthread_mutex_lock(&sai);
-        arrWC[(*(struct ParametrosParaFifo *)arg).p1] = 0;
-        pthread_mutex_unlock(&sai);
-
-        //diz que o tempo do cliente na casa de banho acabou
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; TIMUP\n",
-               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
-
+            //diz que o tempo do cliente na casa de banho acabou
+            printf("%ld ; %d ; %d ; %ld ; %d ; %d ; TIMUP\n",
+                   time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
+                   (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
+                   (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+        }
     }
 
     close(escritor);
@@ -309,6 +325,9 @@ void* verifyClientEnd(void *arg){
 int main(int argc, char *argv[]){
 
     begin = time(NULL);
+
+    sem_init(&sem, 0, n);
+    sem_init(&sem1, 0, 1);
 
     pthread_t tid, tidClienteEnd;
 
@@ -373,5 +392,8 @@ int main(int argc, char *argv[]){
     unlink(fifoName);
 
     pthread_exit(0);
+
+    sem_destroy(&sem);
+    sem_destroy(&sem1);
 
 }
