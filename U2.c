@@ -211,7 +211,7 @@ void* verifyDestroyed(void *arg){
 
         do{
             if(read(leitor, string, 10) == -1)
-                perror("read1");
+                perror("read");
         }while(strcmp("destroyed", string) != 0);
 
         destroyed = 1;

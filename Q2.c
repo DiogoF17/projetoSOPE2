@@ -8,6 +8,8 @@
 #include <signal.h>
 #include <limits.h>
 
+#define NUM_MAX_BATHROOM 10000
+
 int clientEnd = 0;
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
@@ -15,7 +17,8 @@ int closed = 0; //diz-nos se a casa de banho fechou
 int numCasasBanho=1; //nplaces na casa de banho
 pthread_mutex_t entra = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sai = PTHREAD_MUTEX_INITIALIZER;
-int arrWC[];
+
+int arrWC[NUM_MAX_BATHROOM];
 
 int t = -1;
 int l = -1;
@@ -131,9 +134,12 @@ void atribuiValores(char *argv[], int argc){
             }
             else if(strcmp(argv[i-1], "-n") == 0){
                 n = atoi(argv[i]);
+
+                if(n > NUM_MAX_BATHROOM)
+                    n = NUM_MAX_BATHROOM;
                 //inicialização do array
                 for(int i=0; i<n; i++){
-                    arrWC[i]=0;
+                    arrWC[i] = 0;
                 }
                 countN++;
             }
@@ -212,7 +218,7 @@ void *thread_func(void *arg){
 
         //atribui o numero da casa de banho
         pthread_mutex_lock(&entra);
-        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();;
+        (*(struct ParametrosParaFifo *)arg).p1 = choose_WC();
         pthread_mutex_unlock(&entra);
 
         //diz que o cliente entrou na casa de banho
@@ -235,7 +241,7 @@ void *thread_func(void *arg){
 
         //coloca o numero da casa de banho livre
         pthread_mutex_lock(&sai);
-        arrWC[(*(struct ParametrosParaFifo *)arg).p1]=0;
+        arrWC[(*(struct ParametrosParaFifo *)arg).p1] = 0;
         pthread_mutex_unlock(&sai);
 
         //diz que o tempo do cliente na casa de banho acabou
