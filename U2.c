@@ -128,8 +128,8 @@ void *thread_func(void *arg){
 
         mkfifo(file, 0660);
         do{
-        leitor = open(file, O_RDONLY);
-        //printf("waintingForMessage\n");
+            leitor = open(file, O_RDONLY);
+            printf("waintingForMessage\n");
         }while(leitor == -1);
 
         //le a resposta do servidor
@@ -201,7 +201,7 @@ void signalHandler(int signal){
         mkfifo("clientStatus", 0660);
         do{
         escritor = open("clientStatus", O_WRONLY);
-        printf("clientSignalHandler\n");
+        //printf("clientSignalHandler\n");
         }while(escritor == -1);
         
         if(write(escritor, "end", 3) == -1){
@@ -269,8 +269,8 @@ int main(int argc, char *argv[]){
 
     do{
         escritorFifoPub = open(fifoName, O_WRONLY);
-        printf("waitingForCreationOfFifo\n");
-    }while(escritorFifoPub == -1 && destroyed == 0);
+        //printf("waitingForCreationOfFifo\n");
+    }while(escritorFifoPub == -1 && destroyed == 0 && !end);
 
     while(!end){
         //intervalo pelo qual vao ser gerados os pedidos

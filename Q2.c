@@ -135,17 +135,17 @@ void atribuiValores(char *argv[], int argc){
                 t = atoi(argv[i]);
                 countT++;
             }
-            else if(strcmp(argv[i-1], "-n") == 0){
-                n = atoi(argv[i]);
+            else if(strcmp(argv[i-1], "-l") == 0){
+                l = atoi(argv[i]);
 
-                if(n > NUM_MAX_BATHROOM)
-                    n = NUM_MAX_BATHROOM;
+                if(l > NUM_MAX_BATHROOM)
+                    l = NUM_MAX_BATHROOM;
             
-                countN++;
+                countL++;
             }
             else{
-                l = atoi(argv[i]);
-                countL++;
+                n = atoi(argv[i]);
+                countN++;
             }
         }
 
@@ -157,11 +157,11 @@ void atribuiValores(char *argv[], int argc){
         exit(1);
     }
 
-    if(n == -1)
-        n = NUM_MAX_BATHROOM;
+    if(l == -1)
+        l = NUM_MAX_BATHROOM;
 
     //inicialização do array
-    for(int i=0; i<n; i++){
+    for(int i=0; i<l; i++){
         arrWC[i] = 0;
     }
 
@@ -172,7 +172,7 @@ int choose_WC() {
         return -1;
 
     //verifica se alguma casa de banho está livre (a 0) e coloca ocupado (a 1) e retorna o numero da casa de banho (i)
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < l; i++) {
         //printf("\n%d\n\n",i);
         if (arrWC[i] == 0) {
             arrWC[i] = 1;
@@ -218,7 +218,7 @@ void *thread_func(void *arg){
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
-         //printf("writingToClient\n");
+         printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -302,7 +302,7 @@ void signalHandler(int signal){
         mkfifo("bathroomStatus", 0660);
         do{
             escritor = open("bathroomStatus", O_WRONLY);
-             printf("signalHandlerBathroom\n");
+             //printf("signalHandlerBathroom\n");
         }while(escritor == -1);
 
         if(write(escritor, "destroyed", 9) == -1)
@@ -363,7 +363,7 @@ int main(int argc, char *argv[]){
     //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
     find_fifo_name(argv, argc);
 
-    sem_init(&sem, 0, n);
+    sem_init(&sem, 0, l);
     sem_init(&sem1, 0, 1);
 
     //gera e trata de um alarme para daqui a t segundos
@@ -399,7 +399,7 @@ int main(int argc, char *argv[]){
     } 
 
     //esvazia o fifo com eventuais pedidos que tenham restado
-    while(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo)) > 0){
+    while((numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))) > 0){
         //reserva espaco para a passagem de argumentos
         void *arg = malloc(sizeof(struct ParametrosParaFifo));
         *(struct ParametrosParaFifo *)arg = argFifo;
