@@ -218,6 +218,7 @@ void *thread_func(void *arg){
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
+         //printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -297,8 +298,12 @@ void signalHandler(int signal){
     //e escrito no fifo do status da casa de banho
     //que esta ja terminou 
     if(!clientEnd){
+        int escritor;
         mkfifo("bathroomStatus", 0660);
-        int escritor = open("bathroomStatus", O_WRONLY);
+        do{
+            escritor = open("bathroomStatus", O_WRONLY);
+             printf("signalHandlerBathroom\n");
+        }while(escritor == -1);
 
         if(write(escritor, "destroyed", 9) == -1)
             perror("write");
@@ -307,8 +312,8 @@ void signalHandler(int signal){
     }
 
     //impede que processos que estejam empacados a espera saibam logo que a casa de banho fechou
-    for(int i = 0; i < pedidosRestantes; i++)
-        sem_post(&sem);
+    /*for(int i = 0; i < pedidosRestantes; i++)
+        sem_post(&sem);*/
     
 }
 
@@ -319,6 +324,7 @@ void* verifyClientEnd(void *arg){
 
     do{
         leitor = open("clientStatus", O_RDONLY);
+         //printf("verifyclientEnd\n");
     }while(leitor == -1 && !end && !clientEnd);
 
     if(leitor != -1 && !clientEnd){
@@ -327,6 +333,7 @@ void* verifyClientEnd(void *arg){
         do{
             if(read(leitor, string, 4) == -1)
                 perror("read");
+            //printf("verifyclientEndReading\n");
         }while(strcmp("end", string) != 0);
 
         clientEnd = 1;
@@ -410,7 +417,7 @@ int main(int argc, char *argv[]){
 
     pthread_exit(0);
 
-    sem_destroy(&sem);
-    sem_destroy(&sem1);
+    /*sem_destroy(&sem);
+    sem_destroy(&sem1);*/
 
 }

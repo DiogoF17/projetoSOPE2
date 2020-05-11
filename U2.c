@@ -16,6 +16,8 @@ time_t begin; //instante inicial do programa
 int t = -1;
 char fifoName[100];
 
+int escritorFifoPub = -1, closedFifoPub = 0;
+
 int threadVerifyWorking = 0;
 
 struct ParametrosParaFifo{
@@ -86,19 +88,20 @@ void validFormat(int argc, char *argv[]){
 }
 
 void *thread_func(void *arg){
-    int escritor = -1, leitor;
+    int leitor;
     
     struct ParametrosParaFifo argFifo;
 
     //---------------
     
     //fica a espera que o fifo seja criado caso nao tenha sido criado nenhuma vez
-    do{
+    /*do{
         escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
-    }while(escritor == -1 && destroyed == 0);
+        printf("waitingForCreationOfFifo\n");
+    }while(escritor == -1 && destroyed == 0);*/
 
     //o fifo ja foi criado e ainda nao foi detsruido
-    if(escritor != -1 && destroyed == 0){
+    if(escritorFifoPub != -1 && destroyed == 0 && !closedFifoPub){
 
         argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
         argFifo.pid = getpid();
@@ -107,10 +110,12 @@ void *thread_func(void *arg){
         argFifo.p1 = -1;
 
         //o cliente faz o pedido ao servidor(casa de banho)
-        if(write(escritor, &argFifo, sizeof(struct ParametrosParaFifo)) == -1)
+        if(write(escritorFifoPub, &argFifo, sizeof(struct ParametrosParaFifo)) == -1){
+            printf("descriptor: %d\n", escritorFifoPub);
             perror("write");
+        }
 
-        close(escritor);
+        //close(escritor);
 
         printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IWANT\n",
                 time(NULL) - begin, argFifo.i,
@@ -122,7 +127,10 @@ void *thread_func(void *arg){
         sprintf(file, "/tmp/%d.%ld", argFifo.pid, argFifo.tid);
 
         mkfifo(file, 0660);
+        do{
         leitor = open(file, O_RDONLY);
+        //printf("waintingForMessage\n");
+        }while(leitor == -1);
 
         //le a resposta do servidor
         if(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))==-1){
@@ -130,6 +138,8 @@ void *thread_func(void *arg){
                 time(NULL) - begin, argFifo.i,
                 argFifo.pid, argFifo.tid,
                 argFifo.dur, argFifo.p1);
+            perror("read");
+
         }
         else{
 
@@ -187,11 +197,17 @@ void signalHandler(int signal){
     //e escrito no fifo do status da casa do cliente
     //que este ja terminou a geracao de pedidos
     if(!destroyed){
+        int escritor;
         mkfifo("clientStatus", 0660);
-        int escritor = open("clientStatus", O_WRONLY);
+        do{
+        escritor = open("clientStatus", O_WRONLY);
+        printf("clientSignalHandler\n");
+        }while(escritor == -1);
         
-        if(write(escritor, "end", 3) == -1)
+        if(write(escritor, "end", 3) == -1){
+            printf("descriptor1: %d\n", escritor);
             perror("write");
+        }
 
         close(escritor);
     }
@@ -204,6 +220,7 @@ void* verifyDestroyed(void *arg){
 
     do{
         leitor = open("bathroomStatus", O_RDONLY);
+        //printf("verifyDestroyed\n");
     }while(leitor == -1 && !end && !destroyed);
 
     if(leitor != -1 && !destroyed){
@@ -212,6 +229,7 @@ void* verifyDestroyed(void *arg){
         do{
             if(read(leitor, string, 10) == -1)
                 perror("read");
+            //printf("verifyDestroyedReading\n");
         }while(strcmp("destroyed", string) != 0);
 
         destroyed = 1;
@@ -249,6 +267,11 @@ int main(int argc, char *argv[]){
     if(pthread_create(&tidStatus, NULL, verifyDestroyed, NULL))
         perror("pthread_create");
 
+    do{
+        escritorFifoPub = open(fifoName, O_WRONLY);
+        printf("waitingForCreationOfFifo\n");
+    }while(escritorFifoPub == -1 && destroyed == 0);
+
     while(!end){
         //intervalo pelo qual vao ser gerados os pedidos
         usleep(intervalo * 1000);
@@ -265,6 +288,9 @@ int main(int argc, char *argv[]){
         //identificador de cada pedido
         identificador++;
     }
+
+    closedFifoPub = 1;
+    close(escritorFifoPub);
 
     pthread_exit(0);
 
