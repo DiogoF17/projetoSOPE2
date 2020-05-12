@@ -28,8 +28,6 @@ int l = -1;
 int n = -1;
 char fifoName[100];
 
-int threadVerifyWorking = 0;
-
 char *validWords[3] = {"-t", "-n", "-l"};
 
 struct ParametrosParaFifo{
@@ -302,8 +300,8 @@ void signalHandler(int signal){
         int escritor;
         mkfifo("bathroomStatus", 0660);
         do{
-            escritor = open("bathroomStatus", O_WRONLY);
-             printf("signalHandlerBathroom\n");
+            escritor = open("bathroomStatus", O_WRONLY | O_NONBLOCK);
+            printf("signalHandlerBathroom\n");
         }while(escritor == -1);
 
         if(write(escritor, "destroyed", 9) == -1)
@@ -319,16 +317,14 @@ void signalHandler(int signal){
 }
 
 void* verifyClientEnd(void *arg){
-    threadVerifyWorking = 1;
-
     int leitor;
 
     do{
         leitor = open("clientStatus", O_RDONLY);
         printf("verifyclientEnd\n");
-    }while(leitor == -1 && !end && !clientEnd);
+    }while(leitor == -1 && !end);
 
-    if(leitor != -1 && !clientEnd){
+    if(leitor != -1){
         char string[4];
         strcpy(string, "");
         do{
@@ -337,12 +333,15 @@ void* verifyClientEnd(void *arg){
             printf("verifyclientEndReading\n");
         }while(strcmp("end", string) != 0 && !end);
 
-        clientEnd = 1;
+        if(strcmp("end", string) == 0 )
+            clientEnd = 1;
 
         close(leitor);
+
+        unlink("clientStatus");
     }
     
-    unlink("clientStatus");
+    //unlink("clientStatus");
 
     return NULL;
 }
@@ -381,7 +380,7 @@ int main(int argc, char *argv[]){
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);
     do{
-    leitor = open(fifoName, O_RDONLY | O_NONBLOCK);
+        leitor = open(fifoName, O_RDONLY | O_NONBLOCK);
     }while(leitor == -1 && !end && !clientEnd);
     //printf("aqui\n");
 
