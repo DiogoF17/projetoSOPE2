@@ -129,7 +129,7 @@ void *thread_func(void *arg){
         mkfifo(file, 0660);
         do{
             leitor = open(file, O_RDONLY);
-            printf("waintingForMessage\n");
+            //printf("waintingForMessage\n");
         }while(leitor == -1);
 
         //le a resposta do servidor
@@ -197,11 +197,12 @@ void signalHandler(int signal){
     //e escrito no fifo do status da casa do cliente
     //que este ja terminou a geracao de pedidos
     if(!destroyed){
+        //printf("destroyed: %d\n", destroyed);
         int escritor;
         mkfifo("clientStatus", 0660);
         do{
-        escritor = open("clientStatus", O_WRONLY);
-        //printf("clientSignalHandler\n");
+            escritor = open("clientStatus", O_WRONLY);
+            //printf("clientSignalHandler\n");
         }while(escritor == -1);
         
         if(write(escritor, "end", 3) == -1){
@@ -235,6 +236,12 @@ void* verifyDestroyed(void *arg){
         destroyed = 1;
 
         close(leitor);
+
+
+        if(escritorFifoPub != -1){
+            closedFifoPub = 1;
+            close(escritorFifoPub);
+        }
     }
     
     unlink("bathroomStatus");
@@ -288,9 +295,6 @@ int main(int argc, char *argv[]){
         //identificador de cada pedido
         identificador++;
     }
-
-    closedFifoPub = 1;
-    close(escritorFifoPub);
 
     pthread_exit(0);
 

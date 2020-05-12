@@ -218,7 +218,7 @@ void *thread_func(void *arg){
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
-         printf("writingToClient\n");
+         //printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -324,7 +324,7 @@ void* verifyClientEnd(void *arg){
 
     do{
         leitor = open("clientStatus", O_RDONLY);
-         //printf("verifyclientEnd\n");
+        //printf("verifyclientEnd\n");
     }while(leitor == -1 && !end && !clientEnd);
 
     if(leitor != -1 && !clientEnd){
@@ -334,7 +334,7 @@ void* verifyClientEnd(void *arg){
             if(read(leitor, string, 4) == -1)
                 perror("read");
             //printf("verifyclientEndReading\n");
-        }while(strcmp("end", string) != 0);
+        }while(strcmp("end", string) != 0 && !end);
 
         clientEnd = 1;
 
@@ -377,7 +377,10 @@ int main(int argc, char *argv[]){
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);
-    leitor = open(fifoName, O_RDONLY);
+    do{
+    leitor = open(fifoName, O_RDONLY | O_NONBLOCK);
+    }while(leitor == -1 && !end && !clientEnd);
+    //printf("aqui\n");
 
     struct ParametrosParaFifo argFifo;
 
@@ -387,12 +390,14 @@ int main(int argc, char *argv[]){
 
         numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
 
-        //reserva espaco para a passagem de argumentos
-        void *arg = malloc(sizeof(struct ParametrosParaFifo));
-        *(struct ParametrosParaFifo *)arg = argFifo;
+        //printf("Blocked Here!1\n");
 
         //cria uma thread para tratar do pedido
         if(numLidos > 0){
+            //reserva espaco para a passagem de argumentos
+            void *arg = malloc(sizeof(struct ParametrosParaFifo));
+            *(struct ParametrosParaFifo *)arg = argFifo;
+            
             if(pthread_create(&tid, NULL, thread_func, arg))
                 perror("pthread create");
         }
@@ -400,12 +405,15 @@ int main(int argc, char *argv[]){
 
     //esvazia o fifo com eventuais pedidos que tenham restado
     while((numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))) > 0){
-        //reserva espaco para a passagem de argumentos
-        void *arg = malloc(sizeof(struct ParametrosParaFifo));
-        *(struct ParametrosParaFifo *)arg = argFifo;
+
+        //printf("Blocked Here!2\n");
 
         //cria uma thread para tratar do pedido
         if(numLidos > 0){
+            //reserva espaco para a passagem de argumentos
+            void *arg = malloc(sizeof(struct ParametrosParaFifo));
+            *(struct ParametrosParaFifo *)arg = argFifo;
+            
             if(pthread_create(&tid, NULL, thread_func, arg))
                 perror("pthread create");
         }
