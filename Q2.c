@@ -297,6 +297,7 @@ void signalHandler(int signal){
     //caso o cliente nao tenha terminado
     //e escrito no fifo do status da casa de banho
     //que esta ja terminou 
+    printf("clientEnd: %d\n", clientEnd);
     if(!clientEnd){
         int escritor;
         mkfifo("bathroomStatus", 0660);

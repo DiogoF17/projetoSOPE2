@@ -196,6 +196,7 @@ void signalHandler(int signal){
     //caso a casa de banho nao tenha terminado
     //e escrito no fifo do status da casa do cliente
     //que este ja terminou a geracao de pedidos
+    printf("destroyed: %d\n", destroyed);
     if(!destroyed){
         //printf("destroyed: %d\n", destroyed);
         int escritor;
