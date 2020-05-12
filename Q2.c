@@ -302,7 +302,7 @@ void signalHandler(int signal){
         mkfifo("bathroomStatus", 0660);
         do{
             escritor = open("bathroomStatus", O_WRONLY);
-             printf("signalHandlerBathroom\n");
+            //printf("signalHandlerBathroom\n");
         }while(escritor == -1);
 
         if(write(escritor, "destroyed", 9) == -1)
@@ -324,7 +324,7 @@ void* verifyClientEnd(void *arg){
 
     do{
         leitor = open("clientStatus", O_RDONLY);
-        printf("verifyclientEnd\n");
+        //printf("verifyclientEnd\n");
     }while(leitor == -1 && !end && !clientEnd);
 
     if(leitor != -1 && !clientEnd){
@@ -333,15 +333,17 @@ void* verifyClientEnd(void *arg){
         do{
             if(read(leitor, string, 4) == -1)
                 perror("read");
-            printf("verifyclientEndReading\n");
+            //printf("verifyclientEndReading\n");
         }while(strcmp("end", string) != 0 && !end);
 
         clientEnd = 1;
 
         close(leitor);
+
+        unlink("clientStatus");
     }
     
-    unlink("clientStatus");
+    //unlink("clientStatus");
 
     return NULL;
 }

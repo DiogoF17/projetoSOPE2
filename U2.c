@@ -111,7 +111,7 @@ void *thread_func(void *arg){
 
         //o cliente faz o pedido ao servidor(casa de banho)
         if(write(escritorFifoPub, &argFifo, sizeof(struct ParametrosParaFifo)) == -1){
-            printf("descriptor: %d\n", escritorFifoPub);
+            //printf("descriptor: %d\n", escritorFifoPub);
             perror("write");
         }
 
@@ -202,11 +202,11 @@ void signalHandler(int signal){
         mkfifo("clientStatus", 0660);
         do{
             escritor = open("clientStatus", O_WRONLY);
-            printf("clientSignalHandler\n");
+            //printf("clientSignalHandler\n");
         }while(escritor == -1);
         
         if(write(escritor, "end", 3) == -1){
-            printf("descriptor1: %d\n", escritor);
+            //printf("descriptor1: %d\n", escritor);
             perror("write");
         }
 
@@ -221,7 +221,7 @@ void* verifyDestroyed(void *arg){
 
     do{
         leitor = open("bathroomStatus", O_RDONLY);
-        printf("verifyDestroyed\n");
+        //printf("verifyDestroyed\n");
     }while(leitor == -1 && !end && !destroyed);
 
     if(leitor != -1 && !destroyed){
@@ -230,7 +230,7 @@ void* verifyDestroyed(void *arg){
         do{
             if(read(leitor, string, 10) == -1)
                 perror("read");
-            printf("verifyDestroyedReading\n");
+            //printf("verifyDestroyedReading\n");
         }while(strcmp("destroyed", string) != 0);
 
         destroyed = 1;
@@ -242,9 +242,11 @@ void* verifyDestroyed(void *arg){
             closedFifoPub = 1;
             close(escritorFifoPub);
         }
+
+        unlink("bathroomStatus");
     }
     
-    unlink("bathroomStatus");
+    //unlink("bathroomStatus");
 
     return NULL;
 }
