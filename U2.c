@@ -202,7 +202,7 @@ void signalHandler(int signal){
         mkfifo("clientStatus", 0660);
         do{
             escritor = open("clientStatus", O_WRONLY);
-            //printf("clientSignalHandler\n");
+            printf("clientSignalHandler\n");
         }while(escritor == -1);
         
         if(write(escritor, "end", 3) == -1){
@@ -221,7 +221,7 @@ void* verifyDestroyed(void *arg){
 
     do{
         leitor = open("bathroomStatus", O_RDONLY);
-        //printf("verifyDestroyed\n");
+        printf("verifyDestroyed\n");
     }while(leitor == -1 && !end && !destroyed);
 
     if(leitor != -1 && !destroyed){
@@ -230,7 +230,7 @@ void* verifyDestroyed(void *arg){
         do{
             if(read(leitor, string, 10) == -1)
                 perror("read");
-            //printf("verifyDestroyedReading\n");
+            printf("verifyDestroyedReading\n");
         }while(strcmp("destroyed", string) != 0);
 
         destroyed = 1;
@@ -271,8 +271,10 @@ int main(int argc, char *argv[]){
 
     //thread que vai durante o programa verificar se a casa de banho fechou
     //quando tiver fechado ativa a flag destroyed e abandona a thread
-    if(pthread_create(&tidStatus, NULL, verifyDestroyed, NULL))
+    while(pthread_create(&tidStatus, NULL, verifyDestroyed, NULL)){
         perror("pthread_create");
+        usleep(5);
+    }
 
     do{
         escritorFifoPub = open(fifoName, O_WRONLY);
@@ -289,8 +291,10 @@ int main(int argc, char *argv[]){
         strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, fifoName);
 
         //cria uma thread para fazer o pedido
-        if(pthread_create(&tid, NULL, thread_func, arg))
+        while(pthread_create(&tid, NULL, thread_func, arg)){
             perror("pthread_create");
+            usleep(5);
+        }
         
         //identificador de cada pedido
         identificador++;

@@ -302,7 +302,7 @@ void signalHandler(int signal){
         mkfifo("bathroomStatus", 0660);
         do{
             escritor = open("bathroomStatus", O_WRONLY);
-             //printf("signalHandlerBathroom\n");
+             printf("signalHandlerBathroom\n");
         }while(escritor == -1);
 
         if(write(escritor, "destroyed", 9) == -1)
@@ -312,8 +312,8 @@ void signalHandler(int signal){
     }
 
     //impede que processos que estejam empacados a espera saibam logo que a casa de banho fechou
-    /*for(int i = 0; i < pedidosRestantes; i++)
-        sem_post(&sem);*/
+    for(int i = 0; i < pedidosRestantes; i++)
+        sem_post(&sem);
     
 }
 
@@ -324,7 +324,7 @@ void* verifyClientEnd(void *arg){
 
     do{
         leitor = open("clientStatus", O_RDONLY);
-        //printf("verifyclientEnd\n");
+        printf("verifyclientEnd\n");
     }while(leitor == -1 && !end && !clientEnd);
 
     if(leitor != -1 && !clientEnd){
@@ -333,7 +333,7 @@ void* verifyClientEnd(void *arg){
         do{
             if(read(leitor, string, 4) == -1)
                 perror("read");
-            //printf("verifyclientEndReading\n");
+            printf("verifyclientEndReading\n");
         }while(strcmp("end", string) != 0 && !end);
 
         clientEnd = 1;
@@ -372,8 +372,10 @@ int main(int argc, char *argv[]){
 
     //thread que vai verificar se o cliente terminou a geracao de pedidos
     //se sim entao nao e necessario escrever quando se destruir
-    if(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL))
+    while(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL)){
         perror("pthread_create");
+        usleep(5);
+    }
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);
@@ -398,8 +400,10 @@ int main(int argc, char *argv[]){
             void *arg = malloc(sizeof(struct ParametrosParaFifo));
             *(struct ParametrosParaFifo *)arg = argFifo;
             
-            if(pthread_create(&tid, NULL, thread_func, arg))
+            while(pthread_create(&tid, NULL, thread_func, arg)){
                 perror("pthread create");
+                usleep(5);
+            }
         }
     } 
 
@@ -414,8 +418,10 @@ int main(int argc, char *argv[]){
             void *arg = malloc(sizeof(struct ParametrosParaFifo));
             *(struct ParametrosParaFifo *)arg = argFifo;
             
-            if(pthread_create(&tid, NULL, thread_func, arg))
+            while(pthread_create(&tid, NULL, thread_func, arg)){
                 perror("pthread create");
+                usleep(5);
+            }
         }
     }
 
