@@ -295,8 +295,6 @@ void *thread_func(void *arg){
 }
 
 void signalHandler(int signal){
-    //sem_wait(readingWriting);
-
     //altera o valor para terminar o ciclo de tratamento de pedidos
     end = 1;
 
@@ -305,77 +303,27 @@ void signalHandler(int signal){
 
     *shm = 1;
 
+    //-------------
+    //Destroy shared memory region
+
     if(munmap(shm, 1)<0)
         perror("munmap");
 
     if(shm_unlink("status")<0)
         perror("shm_unlink");
 
-    //caso o cliente nao tenha terminado
-    //e escrito no fifo do status da casa de banho
-    //que esta ja terminou 
-    /*printf("clientEnd: %d\n", clientEnd);
-    if(!clientEnd){
-        int escritor;
-        mkfifo("bathroomStatus", 0660);
-        do{
-            escritor = open("bathroomStatus", O_WRONLY | O_NONBLOCK);
-            printf("signalHandlerBathroom\n");
-        }while(escritor == -1);
-
-        if(write(escritor, "destroyed", 9) == -1)
-            perror("write");
-
-        close(escritor);
-    }*/
-
-
-
+    //-------------    
     //impede que processos que estejam empacados a espera saibam logo que a casa de banho fechou
     for(int i = 0; i < pedidosRestantes; i++)
         sem_post(&sem);
 
-    /*sem_post(readingWriting);
-    sem_close(readingWriting);*/
-}
-
-void* verifyClientEnd(void *arg){
-    /*int leitor;
-
-    do{
-        leitor = open("clientStatus", O_RDONLY);
-        printf("verifyclientEnd\n");
-    }while(leitor == -1 && !end);
-
-    if(leitor != -1){
-        char string[4];
-        strcpy(string, "");
-        do{
-            if(read(leitor, string, 4) == -1)
-                perror("read");
-            printf("verifyclientEndReading\n");
-        }while(strcmp("end", string) != 0 && !end);
-
-        if(strcmp("end", string) == 0 ){
-            clientEnd = 1;
-            printf("Client has Ended His Requests Generator!: %s\n", string);
-        }
-
-        close(leitor);
-
-        unlink("clientStatus");
-    }*/
-    
-    //unlink("clientStatus");
-
-    return NULL;
 }
 
 int main(int argc, char *argv[]){
 
     begin = time(NULL);
 
-    pthread_t tid, tidClienteEnd;
+    pthread_t tid;
 
     int leitor;
 
@@ -407,18 +355,10 @@ int main(int argc, char *argv[]){
 
     sem_init(&sem, 0, l);
     sem_init(&sem1, 0, 1);
-    //readingWriting = sem_open("/auxiliarThreads", O_CREAT, 0600, 1);
 
     //gera e trata de um alarme para daqui a t segundos
     signal(SIGALRM, signalHandler);
     alarm(t);
-
-    //thread que vai verificar se o cliente terminou a geracao de pedidos
-    //se sim entao nao e necessario escrever quando se destruir
-    /*while(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL)){
-        perror("pthread_create");
-        usleep(5);
-    }*/
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);

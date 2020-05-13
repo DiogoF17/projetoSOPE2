@@ -24,8 +24,6 @@ char *shm;
 
 int escritorFifoPub = -1, closedFifoPub = 0;
 
-//sem_t *readingWriting;
-
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
     int pid; //pid do processo
@@ -99,12 +97,6 @@ void *thread_func(void *arg){
     struct ParametrosParaFifo argFifo;
 
     //---------------
-    
-    //fica a espera que o fifo seja criado caso nao tenha sido criado nenhuma vez
-    /*do{
-        escritor = open((*(struct ParametrosParaThread *)arg).fifo_ped, O_WRONLY);
-        printf("waitingForCreationOfFifo\n");
-    }while(escritor == -1 && destroyed == 0);*/
 
     //o fifo ja foi criado e ainda nao foi detsruido
     if(escritorFifoPub != -1 && destroyed == 0 && !closedFifoPub){
@@ -196,72 +188,19 @@ void *thread_func(void *arg){
 }
 
 void signalHandler(int signal){
-    //sem_wait(readingWriting);
-
     //altera o valor para terminar o ciclo de geracao de pedidos
     end = 1;
-
-    //caso a casa de banho nao tenha terminado
-    //e escrito no fifo do status da casa do cliente
-    //que este ja terminou a geracao de pedidos
-    /*printf("destroyed: %d\n", destroyed);
-    if(!destroyed){
-        //printf("destroyed: %d\n", destroyed);
-        int escritor;
-        mkfifo("clientStatus", 0660);
-        do{
-            escritor = open("clientStatus", O_WRONLY | O_NONBLOCK);
-            printf("clientSignalHandler\n");
-        }while(escritor == -1);
-        
-        if(write(escritor, "end", 3) == -1){
-            printf("descriptor1: %d\n", escritor);
-            perror("write");
-        }
-
-        close(escritor);
-    }*/
-
-    //sem_post(readingWriting);
-    //sem_close(readingWriting);
 }
 
 void* verifyDestroyed(void *arg){
-    /*int leitor;
 
-    do{
-        leitor = open("bathroomStatus", O_RDONLY);
-        printf("verifyDestroyed\n");
-    }while(leitor == -1 && !end);
-
-    if(leitor != -1){
-        printf("Verifying...\n");
-        char string[10];
-
-        do{
-            if(read(leitor, string, 10) == -1)
-                perror("read");
-            printf("verifyDestroyedReading\n");
-        }while(strcmp("destroyed", string) != 0 && !end);
-
-        if(strcmp("destroyed", string) == 0){
-            destroyed = 1;
-            printf("Bathroom has Finished His Requests Receiver!: %s\n", string);
-        }
-
-        close(leitor);
-
-
-        if(escritorFifoPub != -1){
-            closedFifoPub = 1;
-            close(escritorFifoPub);
-        }
-
-        unlink("bathroomStatus");*/
     while(*shm != 1 && !end);
     destroyed = 1;    
-    
-    //unlink("bathroomStatus");
+
+    if(escritorFifoPub != -1){
+        closedFifoPub = 1;
+        close(escritorFifoPub);
+    }
 
     return NULL;
 }
@@ -293,8 +232,6 @@ int main(int argc, char *argv[]){
     //gera e trata de um alarme para daqui a argv[2] segundos
     signal(SIGALRM, signalHandler);
     alarm(atoi(argv[2]));
-
-    //readingWriting = sem_open("/auxiliarThreads", O_CREAT, 0600, 1);
 
     srand(time(NULL));
 
