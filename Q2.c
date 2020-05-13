@@ -8,6 +8,8 @@
 #include <signal.h>
 #include <limits.h>
 #include<semaphore.h>
+#include <sys/types.h>
+#include <sys/mman.h>
 
 #define NUM_MAX_BATHROOM 10000
 
@@ -23,12 +25,17 @@ sem_t sem;
 sem_t sem1;
 int arrWC[NUM_MAX_BATHROOM];
 
+int shmfd;
+char *shm;
+
 int t = -1;
 int l = -1;
 int n = -1;
 char fifoName[100];
 
 char *validWords[3] = {"-t", "-n", "-l"};
+
+int countThreadsRunning = 0;
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -282,20 +289,32 @@ void *thread_func(void *arg){
 
     close(escritor);
 
+    countThreadsRunning--;
+
     return NULL;
 }
 
 void signalHandler(int signal){
+    //sem_wait(readingWriting);
+
     //altera o valor para terminar o ciclo de tratamento de pedidos
     end = 1;
 
     //o fifo que era usado para a comunicacao entre o servidor e a casa de banho foi destruido
     closed = 1;
 
+    *shm = 1;
+
+    if(munmap(shm, 1)<0)
+        perror("munmap");
+
+    if(shm_unlink("status")<0)
+        perror("shm_unlink");
+
     //caso o cliente nao tenha terminado
     //e escrito no fifo do status da casa de banho
     //que esta ja terminou 
-    printf("clientEnd: %d\n", clientEnd);
+    /*printf("clientEnd: %d\n", clientEnd);
     if(!clientEnd){
         int escritor;
         mkfifo("bathroomStatus", 0660);
@@ -308,16 +327,20 @@ void signalHandler(int signal){
             perror("write");
 
         close(escritor);
-    }
+    }*/
+
+
 
     //impede que processos que estejam empacados a espera saibam logo que a casa de banho fechou
     for(int i = 0; i < pedidosRestantes; i++)
         sem_post(&sem);
-    
+
+    /*sem_post(readingWriting);
+    sem_close(readingWriting);*/
 }
 
 void* verifyClientEnd(void *arg){
-    int leitor;
+    /*int leitor;
 
     do{
         leitor = open("clientStatus", O_RDONLY);
@@ -333,13 +356,15 @@ void* verifyClientEnd(void *arg){
             printf("verifyclientEndReading\n");
         }while(strcmp("end", string) != 0 && !end);
 
-        if(strcmp("end", string) == 0 )
+        if(strcmp("end", string) == 0 ){
             clientEnd = 1;
+            printf("Client has Ended His Requests Generator!: %s\n", string);
+        }
 
         close(leitor);
 
         unlink("clientStatus");
-    }
+    }*/
     
     //unlink("clientStatus");
 
@@ -363,8 +388,26 @@ int main(int argc, char *argv[]){
     //vai buscar qual o nome do fifo pelo qual se vai passar os argumentos
     find_fifo_name(argv, argc);
 
+    //----------------
+
+    //create the shared memory region
+    shmfd = shm_open("status",O_CREAT|O_RDWR,0600);
+    if(shmfd<0)
+        perror("shm_open");
+        
+    if (ftruncate(shmfd,1) < 0)
+        perror("ftruncate");
+        
+    //attach this region to virtual 
+    shm = (char *) mmap(0,1,PROT_READ|PROT_WRITE,MAP_SHARED,shmfd,0);
+    if(shm == MAP_FAILED)
+        perror("mmap");
+
+    //----------------
+
     sem_init(&sem, 0, l);
     sem_init(&sem1, 0, 1);
+    //readingWriting = sem_open("/auxiliarThreads", O_CREAT, 0600, 1);
 
     //gera e trata de um alarme para daqui a t segundos
     signal(SIGALRM, signalHandler);
@@ -372,10 +415,10 @@ int main(int argc, char *argv[]){
 
     //thread que vai verificar se o cliente terminou a geracao de pedidos
     //se sim entao nao e necessario escrever quando se destruir
-    while(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL)){
+    /*while(pthread_create(&tidClienteEnd, NULL, verifyClientEnd, NULL)){
         perror("pthread_create");
         usleep(5);
-    }
+    }*/
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
     mkfifo(fifoName, 0660);
@@ -404,6 +447,8 @@ int main(int argc, char *argv[]){
                 perror("pthread create");
                 usleep(5);
             }
+
+            countThreadsRunning++;
         }
     } 
 
@@ -422,6 +467,8 @@ int main(int argc, char *argv[]){
                 perror("pthread create");
                 usleep(5);
             }
+
+            countThreadsRunning++;
         }
     }
 
@@ -429,9 +476,12 @@ int main(int argc, char *argv[]){
     close(leitor);
     unlink(fifoName);
 
-    pthread_exit(0);
-
-    /*sem_destroy(&sem);
+    /*while(countThreadsRunning){
+        printf("destroying...\n");
+    }
+    sem_destroy(&sem);
     sem_destroy(&sem1);*/
+
+    pthread_exit(0);
 
 }

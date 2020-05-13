@@ -8,6 +8,9 @@
 #include <time.h>
 #include <signal.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <semaphore.h>
+#include <sys/mman.h>
 
 int destroyed = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
 int end = 0; //variavel que permite o ciclo
@@ -16,9 +19,12 @@ time_t begin; //instante inicial do programa
 int t = -1;
 char fifoName[100];
 
+int shmfd;
+char *shm;
+
 int escritorFifoPub = -1, closedFifoPub = 0;
 
-int threadVerifyWorking = 0;
+//sem_t *readingWriting;
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -190,13 +196,15 @@ void *thread_func(void *arg){
 }
 
 void signalHandler(int signal){
+    //sem_wait(readingWriting);
+
     //altera o valor para terminar o ciclo de geracao de pedidos
     end = 1;
 
     //caso a casa de banho nao tenha terminado
     //e escrito no fifo do status da casa do cliente
     //que este ja terminou a geracao de pedidos
-    printf("destroyed: %d\n", destroyed);
+    /*printf("destroyed: %d\n", destroyed);
     if(!destroyed){
         //printf("destroyed: %d\n", destroyed);
         int escritor;
@@ -212,13 +220,14 @@ void signalHandler(int signal){
         }
 
         close(escritor);
-    }
+    }*/
+
+    //sem_post(readingWriting);
+    //sem_close(readingWriting);
 }
 
 void* verifyDestroyed(void *arg){
-    threadVerifyWorking = 1;
-    
-    int leitor;
+    /*int leitor;
 
     do{
         leitor = open("bathroomStatus", O_RDONLY);
@@ -235,8 +244,10 @@ void* verifyDestroyed(void *arg){
             printf("verifyDestroyedReading\n");
         }while(strcmp("destroyed", string) != 0 && !end);
 
-        if(strcmp("destroyed", string) == 0)
+        if(strcmp("destroyed", string) == 0){
             destroyed = 1;
+            printf("Bathroom has Finished His Requests Receiver!: %s\n", string);
+        }
 
         close(leitor);
 
@@ -246,8 +257,9 @@ void* verifyDestroyed(void *arg){
             close(escritorFifoPub);
         }
 
-        unlink("bathroomStatus");
-    }
+        unlink("bathroomStatus");*/
+    while(*shm != 1 && !end);
+    destroyed = 1;    
     
     //unlink("bathroomStatus");
 
@@ -261,9 +273,28 @@ int main(int argc, char *argv[]){
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
+    //----------------
+
+    //create the shared memory region
+    shmfd = shm_open("status",O_CREAT|O_RDWR,0600);
+    if(shmfd<0)
+        perror("shm_open");
+        
+    if (ftruncate(shmfd,1) < 0)
+        perror("ftruncate");
+        
+    //attach this region to virtual 
+    shm = (char *) mmap(0,1,PROT_READ|PROT_WRITE,MAP_SHARED,shmfd,0);
+    if(shm == MAP_FAILED)
+        perror("mmap");
+
+    //----------------
+
     //gera e trata de um alarme para daqui a argv[2] segundos
     signal(SIGALRM, signalHandler);
     alarm(atoi(argv[2]));
+
+    //readingWriting = sem_open("/auxiliarThreads", O_CREAT, 0600, 1);
 
     srand(time(NULL));
 
