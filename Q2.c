@@ -21,6 +21,8 @@ int numCasasBanho=1; //nplaces na casa de banho
 
 int pedidosRestantes = 0;
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 sem_t sem;
 sem_t sem1;
 int arrWC[NUM_MAX_BATHROOM];
@@ -223,7 +225,7 @@ void *thread_func(void *arg){
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
-         //printf("writingToClient\n");
+        printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -290,6 +292,11 @@ void *thread_func(void *arg){
     close(escritor);
 
     countThreadsRunning--;
+
+    pthread_mutex_lock(&mutex);
+    if (n!=-1)
+        n++;
+    pthread_mutex_unlock(&mutex);
 
     return NULL;
 }
@@ -373,32 +380,46 @@ int main(int argc, char *argv[]){
 
     while(!end){
 
-        numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
-
-        //printf("Blocked Here!1\n");
-
-        //cria uma thread para tratar do pedido
-        if(numLidos > 0){
-            //reserva espaco para a passagem de argumentos
-            void *arg = malloc(sizeof(struct ParametrosParaFifo));
-            *(struct ParametrosParaFifo *)arg = argFifo;
+        pthread_mutex_lock(&mutex);
+        if(n>0 || n== -1){
             
-            while(pthread_create(&tid, NULL, thread_func, arg)){
-                perror("pthread create");
-                usleep(5);
-            }
+            numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
+            
+            if (numLidos>0){
+                //cria uma thread para tratar do pedido
+                //reserva espaco para a passagem de argumentos
+                void *arg = malloc(sizeof(struct ParametrosParaFifo));
+                *(struct ParametrosParaFifo *)arg = argFifo;
+                
+                while(pthread_create(&tid, NULL, thread_func, arg)){
+                    perror("pthread create");
+                    usleep(5);
+                }
 
-            countThreadsRunning++;
+                countThreadsRunning++;
+            
+                if (n!=-1)
+                    n--;
+            }
+            
         }
+        pthread_mutex_unlock(&mutex);
+        
     } 
 
     //esvazia o fifo com eventuais pedidos que tenham restado
-    while((numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))) > 0){
+    while(1){
+        pthread_mutex_lock(&mutex);
+        if(n>0 || n== -1){
 
-        //printf("Blocked Here!2\n");
+            numLidos = read(leitor, &argFifo, sizeof(struct ParametrosParaFifo));
 
-        //cria uma thread para tratar do pedido
-        if(numLidos > 0){
+            if (numLidos <=0){
+                pthread_mutex_unlock(&mutex);
+                break;
+            }
+        
+            //cria uma thread para tratar do pedido
             //reserva espaco para a passagem de argumentos
             void *arg = malloc(sizeof(struct ParametrosParaFifo));
             *(struct ParametrosParaFifo *)arg = argFifo;
@@ -409,18 +430,25 @@ int main(int argc, char *argv[]){
             }
 
             countThreadsRunning++;
+        
+            if (n!=-1)
+                n--;
         }
+        pthread_mutex_unlock(&mutex);
+    
     }
 
     //fecha e destroi o fifo usado para comunicacao
     close(leitor);
     unlink(fifoName);
-
-    /*while(countThreadsRunning){
-        printf("destroying...\n");
+    
+    while(countThreadsRunning){
+        printf("destroying... %d\n", countThreadsRunning);
     }
+    //printf("destroying... %d\n Threads: %d\n", countThreadsRunning,n);
     sem_destroy(&sem);
-    sem_destroy(&sem1);*/
+    sem_destroy(&sem1);
+    pthread_mutex_destroy(&mutex);
 
     pthread_exit(0);
 

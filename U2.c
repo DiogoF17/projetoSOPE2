@@ -127,7 +127,7 @@ void *thread_func(void *arg){
         mkfifo(file, 0660);
         do{
             leitor = open(file, O_RDONLY);
-            //printf("waintingForMessage\n");
+            printf("waintingForMessage\n");
         }while(leitor == -1);
 
         //le a resposta do servidor
