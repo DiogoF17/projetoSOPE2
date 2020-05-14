@@ -38,6 +38,7 @@ char fifoName[100];
 char *validWords[3] = {"-t", "-n", "-l"};
 
 int countThreadsRunning = 0;
+int numDecr = 0;
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -225,7 +226,7 @@ void *thread_func(void *arg){
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
-        printf("writingToClient\n");
+        //printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -291,13 +292,16 @@ void *thread_func(void *arg){
 
     close(escritor);
 
-    countThreadsRunning--;
+    //countThreadsRunning--;
 
     pthread_mutex_lock(&mutex);
+    countThreadsRunning--;
     if (n!=-1)
         n++;
+    numDecr++;
     pthread_mutex_unlock(&mutex);
 
+    //numDecr++;
     return NULL;
 }
 
@@ -333,6 +337,8 @@ int main(int argc, char *argv[]){
     pthread_t tid;
 
     int leitor;
+
+    int numthreads=0;
 
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
@@ -397,6 +403,7 @@ int main(int argc, char *argv[]){
                 }
 
                 countThreadsRunning++;
+                numthreads++;
             
                 if (n!=-1)
                     n--;
@@ -430,6 +437,7 @@ int main(int argc, char *argv[]){
             }
 
             countThreadsRunning++;
+            numthreads++;
         
             if (n!=-1)
                 n--;
@@ -443,7 +451,7 @@ int main(int argc, char *argv[]){
     unlink(fifoName);
     
     while(countThreadsRunning){
-        printf("destroying... %d\n", countThreadsRunning);
+        //printf("destroying... %d\nX: %i\nY: %i ", countThreadsRunning,numthreads,numDecr);
     }
     //printf("destroying... %d\n Threads: %d\n", countThreadsRunning,n);
     sem_destroy(&sem);
