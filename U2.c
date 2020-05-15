@@ -12,12 +12,20 @@
 #include <semaphore.h>
 #include <sys/mman.h>
 
+#define CHARCODE_ZERO 48 //48->code of '0'
+#define CHARCODE_NINE 57 //57->code of '9'
+#define PARAMETROS_THREAD (*(struct ParametrosParaThread *)arg)
+#define MAX_SPACE 100
+#define SHM_MODE 0600
+#define FIFO_MODE 0660
+
+
 int destroyed = 0;  //diz-nos se o fifo ja foi criado alguma vez, pois pode ja ter sido destruido e nesse caso nao podemos enviar mais pedidos
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 
 int t = -1;
-char fifoName[100];
+char fifoName[MAX_SPACE];
 
 int shmfd;
 char *shm;
@@ -34,7 +42,7 @@ struct ParametrosParaFifo{
 
 struct ParametrosParaThread{
     int identificador; //identificador de cada thread na linha de lancamento
-    char fifo_ped[100]; //nome do fifo para o qual metemos os parametros
+    char fifo_ped[MAX_SPACE]; //nome do fifo para o qual metemos os parametros
 };
 
 int validNumber(char *string){
@@ -46,7 +54,7 @@ int validNumber(char *string){
     int zero = 1;
 
     for(int i = 0; i < strlen(string); i++){
-        if(string[i] != 48){ //48->code of '0'
+        if(string[i] != CHARCODE_ZERO){
             zero = 0;
             break;
         }
@@ -56,7 +64,7 @@ int validNumber(char *string){
         return 0;
 
     for(int i = 0; i < strlen(string); i++){
-        if (string[i] < 48 || string[i] > 57)
+        if (string[i] < CHARCODE_ZERO || string[i] > CHARCODE_NINE)
             return 0;
     }
     return 1;
@@ -101,7 +109,7 @@ void *thread_func(void *arg){
     //o fifo ja foi criado e ainda nao foi detsruido
     if(escritorFifoPub != -1 && destroyed == 0 && !closedFifoPub){
 
-        argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
+        argFifo.i = PARAMETROS_THREAD.identificador;
         argFifo.pid = getpid();
         argFifo.tid = pthread_self();
         argFifo.dur = (rand() % 5) + 1;
@@ -109,33 +117,25 @@ void *thread_func(void *arg){
 
         //o cliente faz o pedido ao servidor(casa de banho)
         if(write(escritorFifoPub, &argFifo, sizeof(struct ParametrosParaFifo)) == -1){
-            //printf("descriptor: %d\n", escritorFifoPub);
             perror("write");
         }
 
-        //close(escritor);
-
         printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IWANT\n",
-                time(NULL) - begin, argFifo.i,
-                argFifo.pid, argFifo.tid,
-                argFifo.dur, argFifo.p1);
+                time(NULL) - begin, argFifo.i, argFifo.pid, argFifo.tid, argFifo.dur, argFifo.p1);
 
         //o cliente cria o fifo onde vai receber as respostas do servidor
-        char file[100];
+        char file[MAX_SPACE];
         sprintf(file, "/tmp/%d.%ld", argFifo.pid, argFifo.tid);
 
-        mkfifo(file, 0660);
+        mkfifo(file, FIFO_MODE);
         do{
             leitor = open(file, O_RDONLY);
-            //printf("waintingForMessage\n");
         }while(leitor == -1);
 
         //le a resposta do servidor
         if(read(leitor, &argFifo, sizeof(struct ParametrosParaFifo))==-1){
             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; FAILD\n",
-                time(NULL) - begin, argFifo.i,
-                argFifo.pid, argFifo.tid,
-                argFifo.dur, argFifo.p1);
+                time(NULL) - begin, argFifo.i, argFifo.pid, argFifo.tid, argFifo.dur, argFifo.p1);
             perror("read");
 
         }
@@ -148,38 +148,19 @@ void *thread_func(void *arg){
             //neste caso teve tempo de fazer o pedido porque ainda estava aberta mas entretanto fechou
             if(argFifo.p1 == -1){
                 printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
-                        time(NULL) - begin, argFifo.i,
-                        argFifo.pid, argFifo.tid,
-                        argFifo.dur, argFifo.p1);
+                        time(NULL) - begin, argFifo.i, argFifo.pid, argFifo.tid, argFifo.dur, argFifo.p1);
             }
+
             //foi atribuida uma casa de banho > -1
             else{
                 printf("%ld ; %d ; %d ; %ld ; %d ; %d ; IAMIN\n",
-                        time(NULL) - begin, argFifo.i,
-                        argFifo.pid, argFifo.tid,
-                        argFifo.dur, argFifo.p1);
+                        time(NULL) - begin, argFifo.i, argFifo.pid, argFifo.tid, argFifo.dur, argFifo.p1);
             }
         }
         
         close(leitor);
         unlink(file);
     }
-    /*
-    //caso o fifo ja tenha sido destruido, ou seja, se a casa de banho ja fechou
-    //o cliente nao teve tempo de fazer o pedido
-    else if(destroyed == 1){
-        
-        argFifo.i = (*(struct ParametrosParaThread *)arg).identificador;
-        argFifo.pid = getpid();
-        argFifo.tid = pthread_self();
-        argFifo.dur = -1;
-        argFifo.p1 = -1;
-
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; CLOSD\n",
-                    time(NULL) - begin, argFifo.i,
-                    argFifo.pid, argFifo.tid,
-                    argFifo.dur, argFifo.p1);
-    }*/
 
     //libertacao de recursos utilizados
     free(arg);
@@ -215,7 +196,7 @@ int main(int argc, char *argv[]){
     //----------------
 
     //create the shared memory region
-    shmfd = shm_open("status",O_CREAT|O_RDWR,0600);
+    shmfd = shm_open("status",O_CREAT|O_RDWR,SHM_MODE);
     if(shmfd<0)
         perror("shm_open");
         
@@ -260,8 +241,8 @@ int main(int argc, char *argv[]){
         
         //reserva espaco para a passagem de argumentos
         void * arg = malloc (sizeof(struct ParametrosParaThread));
-        (*(struct ParametrosParaThread *) arg).identificador = identificador;
-        strcpy((*(struct ParametrosParaThread *) arg).fifo_ped, fifoName);
+        PARAMETROS_THREAD.identificador = identificador;
+        strcpy(PARAMETROS_THREAD.fifo_ped, fifoName);
 
         //cria uma thread para fazer o pedido
         while(pthread_create(&tid, NULL, thread_func, arg)){

@@ -12,12 +12,18 @@
 #include <sys/mman.h>
 
 #define NUM_MAX_BATHROOM 10000
+#define CHARCODE_ZERO 48 //48->code of '0'
+#define CHARCODE_NINE 57 //57->code of '9'
+#define PARAMETROS_FIFO (*(struct ParametrosParaFifo*) arg)
+#define MS_2_US 100000
+#define MAX_SPACE 100
+#define SHM_MODE 0600
+#define FIFO_MODE 0660
 
 int clientEnd = 0;
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
-int numCasasBanho=1; //nplaces na casa de banho
 
 int pedidosRestantes = 0;
 
@@ -33,12 +39,11 @@ char *shm;
 int t = -1;
 int l = -1;
 int n = -1;
-char fifoName[100];
+char fifoName[MAX_SPACE];
 
 char *validWords[3] = {"-t", "-n", "-l"};
 
 int countThreadsRunning = 0;
-int numDecr = 0;
 
 struct ParametrosParaFifo{
     int i; //identificador de cada pedido
@@ -51,13 +56,14 @@ struct ParametrosParaFifo{
 int validNumber(char *string){
     if(string == NULL)
         return 0;
+
     if(strcmp(string, "") == 0)
         return 0;
 
     int zero = 1;
 
     for(int i = 0; i < strlen(string); i++){
-        if(string[i] != 48){//48->code of '0'
+        if(string[i] != CHARCODE_ZERO){
             zero = 0;
             break;
         }
@@ -67,7 +73,7 @@ int validNumber(char *string){
         return 0;
 
     for(int i = 0; i < strlen(string); i++){
-        if (string[i] < 48 || string[i] > 57) //48->code of '0', 57->code of '9'
+        if (string[i] < CHARCODE_ZERO || string[i] > CHARCODE_NINE)
             return 0;
     }
     return 1;
@@ -181,7 +187,6 @@ int choose_WC() {
 
     //verifica se alguma casa de banho está livre (a 0) e coloca ocupado (a 1) e retorna o numero da casa de banho (i)
     for (int i = 0; i < l; i++) {
-        //printf("\n%d\n\n",i);
         if (arrWC[i] == 0) {
             arrWC[i] = 1;
             return i;
@@ -196,26 +201,23 @@ void *thread_func(void *arg){
     int escritor;
 
     //nome do fifo usado para a resposta do servidor
-    char file[100];
-    sprintf(file, "/tmp/%d.%ld", (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid);
+    char file[MAX_SPACE];
+    sprintf(file, "/tmp/%d.%ld", PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid);
 
     sem_wait(&sem1);
     pedidosRestantes++;
     sem_post(&sem1);
-    
-    (*(struct ParametrosParaFifo*) arg).pid = getpid();
-    (*(struct ParametrosParaFifo*) arg).tid = pthread_self();
+
+    PARAMETROS_FIFO.pid = getpid();
+    PARAMETROS_FIFO.tid = pthread_self();
 
     //acusa a rececao do pedido feita pelo cliente
     printf("%ld ; %d ; %d ; %ld ; %d ; %d ; RECVD\n",
-        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+        time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
 
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
-        //printf("writingToClient\n");
     } while(escritor == -1);
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
@@ -225,16 +227,13 @@ void *thread_func(void *arg){
 
         if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
              printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
-               time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-               (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-               (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+               time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
         }
 
         printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
-        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+        time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
     }
+
     //manda para o cliente a resposta com a casa de banho atribuida
     else{
         sem_wait(&sem);
@@ -243,45 +242,39 @@ void *thread_func(void *arg){
         sem_wait(&sem1);
         pedidosRestantes--;
         int wc=choose_WC();
-        (*(struct ParametrosParaFifo *)arg).p1 = wc;
+        PARAMETROS_FIFO.p1 = wc;
         sem_post(&sem1);
 
-        if((*(struct ParametrosParaFifo *)arg).p1 == -1){
+        if(PARAMETROS_FIFO.p1 == -1){
             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
-                   time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-                   (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-                   (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
+                   time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
         }
+
         else {
             //diz que o cliente entrou na casa de banho
             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; ENTER\n",
-                   time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
-                   (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
-                   (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+                   time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
         }
 
         //envia a resposta ao cliente a dizer qual a casa de banho atribuida
         if (write(escritor, (struct ParametrosParaFifo *) arg, sizeof(struct ParametrosParaFifo)) == -1) {
             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
-                    time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
-                    (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
-                    (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+                    time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
         }
 
-
         if((*(struct ParametrosParaFifo *)arg).p1 != -1){
+
             //tempo de utilizacao da casa de banho
-            usleep((*(struct ParametrosParaFifo *) arg).dur * 100000);
+            usleep(PARAMETROS_FIFO.dur * MS_2_US);
+
             //coloca o numero da casa de banho livre
             sem_wait(&sem1);
-            arrWC[(*(struct ParametrosParaFifo *) arg).p1] = 0;
+            arrWC[PARAMETROS_FIFO.p1] = 0;
             sem_post(&sem1);
 
             //diz que o tempo do cliente na casa de banho acabou
             printf("%ld ; %d ; %d ; %ld ; %d ; %d ; TIMUP\n",
-                    time(NULL) - begin, (*(struct ParametrosParaFifo *) arg).i,
-                    (*(struct ParametrosParaFifo *) arg).pid, (*(struct ParametrosParaFifo *) arg).tid,
-                    (*(struct ParametrosParaFifo *) arg).dur, (*(struct ParametrosParaFifo *) arg).p1);
+                    time(NULL) - begin, PARAMETROS_FIFO.i, PARAMETROS_FIFO.pid, PARAMETROS_FIFO.tid, PARAMETROS_FIFO.dur, PARAMETROS_FIFO.p1);
         }
 
         sem_post(&sem);
@@ -289,16 +282,14 @@ void *thread_func(void *arg){
 
     close(escritor);
 
-    //countThreadsRunning--;
-
     pthread_mutex_lock(&mutex);
     countThreadsRunning--;
+
     if (n!=-1)
         n++;
-    numDecr++;
+
     pthread_mutex_unlock(&mutex);
 
-    //numDecr++;
     return NULL;
 }
 
@@ -335,8 +326,6 @@ int main(int argc, char *argv[]){
 
     int leitor;
 
-    int numthreads=0;
-
     //verifica se o programa foi invocado com um formato correto
     validFormat(argc, argv);
 
@@ -349,7 +338,7 @@ int main(int argc, char *argv[]){
     //----------------
 
     //create the shared memory region
-    shmfd = shm_open("status",O_CREAT|O_RDWR,0600);
+    shmfd = shm_open("status",O_CREAT|O_RDWR,SHM_MODE);
     if(shmfd<0)
         perror("shm_open");
         
@@ -371,11 +360,10 @@ int main(int argc, char *argv[]){
     alarm(t);
 
     //cria o fifo pelo qual vai ser estabelecida a comunicacao entre a casa de banho e o cliente
-    mkfifo(fifoName, 0660);
+    mkfifo(fifoName, FIFO_MODE);
     do{
         leitor = open(fifoName, O_RDONLY | O_NONBLOCK);
     }while(leitor == -1 && !end && !clientEnd);
-    //printf("aqui\n");
 
     struct ParametrosParaFifo argFifo;
 
@@ -392,7 +380,7 @@ int main(int argc, char *argv[]){
                 //cria uma thread para tratar do pedido
                 //reserva espaco para a passagem de argumentos
                 void *arg = malloc(sizeof(struct ParametrosParaFifo));
-                *(struct ParametrosParaFifo *)arg = argFifo;
+                PARAMETROS_FIFO = argFifo;
                 
                 while(pthread_create(&tid, NULL, thread_func, arg)){
                     perror("pthread create");
@@ -400,8 +388,7 @@ int main(int argc, char *argv[]){
                 }
 
                 countThreadsRunning++;
-                numthreads++;
-            
+
                 if (n!=-1)
                     n--;
             }
@@ -426,7 +413,7 @@ int main(int argc, char *argv[]){
             //cria uma thread para tratar do pedido
             //reserva espaco para a passagem de argumentos
             void *arg = malloc(sizeof(struct ParametrosParaFifo));
-            *(struct ParametrosParaFifo *)arg = argFifo;
+            PARAMETROS_FIFO = argFifo;
             
             while(pthread_create(&tid, NULL, thread_func, arg)){
                 perror("pthread create");
@@ -434,8 +421,7 @@ int main(int argc, char *argv[]){
             }
 
             countThreadsRunning++;
-            numthreads++;
-        
+
             if (n!=-1)
                 n--;
         }
@@ -446,11 +432,11 @@ int main(int argc, char *argv[]){
     //fecha e destroi o fifo usado para comunicacao
     close(leitor);
     unlink(fifoName);
-    
+
+    //Espera que todas as threads executem para depois destruir os semaforos
     while(countThreadsRunning){
-        //printf("destroying... %d\nX: %i\nY: %i ", countThreadsRunning,numthreads,numDecr);
     }
-    //printf("destroying... %d\n Threads: %d\n", countThreadsRunning,n);
+
     sem_destroy(&sem);
     sem_destroy(&sem1);
     pthread_mutex_destroy(&mutex);
