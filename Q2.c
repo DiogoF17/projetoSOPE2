@@ -212,17 +212,6 @@ void *thread_func(void *arg){
         (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
         (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
 
-    //diz que o pedido chegou tarde de mais
-    if(closed){
-        //Nao entrou logo a duracao foi -1
-        (* (struct ParametrosParaFifo *)arg).dur = -1;
-
-        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
-        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
-        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
-        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
-    }
-
     //espera que o cliente cria o fifo para a resposta
     do{
         escritor = open(file, O_WRONLY);
@@ -231,12 +220,20 @@ void *thread_func(void *arg){
 
     //se o tempo de funcionamento da casa de banho chegar ao fim manda ao cliente a dizer que fechou
     if(closed){
+        //Nao entrou logo a duracao foi -1
+        (* (struct ParametrosParaFifo *)arg).dur = -1;
+
         if(write(escritor, (struct ParametrosParaFifo *)arg, sizeof(struct ParametrosParaFifo)) == -1){
              printf("%ld ; %d ; %d ; %ld ; %d ; %d ; GAVUP\n",
                time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
                (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
                (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
         }
+
+        printf("%ld ; %d ; %d ; %ld ; %d ; %d ; 2LATE\n",
+        time(NULL) - begin, (* (struct ParametrosParaFifo *)arg).i,
+        (*(struct ParametrosParaFifo*) arg).pid, (*(struct ParametrosParaFifo*) arg).tid,
+        (* (struct ParametrosParaFifo *)arg).dur, (* (struct ParametrosParaFifo *)arg).p1);
     }
     //manda para o cliente a resposta com a casa de banho atribuida
     else{
