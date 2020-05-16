@@ -165,7 +165,7 @@ void *thread_func(void *arg){
     //libertacao de recursos utilizados
     free(arg);
 
-    return NULL;
+    pthread_exit(NULL);
 }
 
 void signalHandler(int signal){
