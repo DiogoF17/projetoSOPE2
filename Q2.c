@@ -20,7 +20,6 @@
 #define SHM_MODE 0600
 #define FIFO_MODE 0660
 
-int clientEnd = 0;
 int end = 0; //variavel que permite o ciclo
 time_t begin; //instante inicial do programa
 int closed = 0; //diz-nos se a casa de banho fechou
@@ -363,7 +362,7 @@ int main(int argc, char *argv[]){
     mkfifo(fifoName, FIFO_MODE);
     do{
         leitor = open(fifoName, O_RDONLY | O_NONBLOCK);
-    }while(leitor == -1 && !end && !clientEnd);
+    }while(leitor == -1 && !end);
 
     struct ParametrosParaFifo argFifo;
 
@@ -434,8 +433,7 @@ int main(int argc, char *argv[]){
     unlink(fifoName);
 
     //Espera que todas as threads executem para depois destruir os semaforos
-    while(countThreadsRunning){
-    }
+    while(countThreadsRunning){}
 
     sem_destroy(&sem);
     sem_destroy(&sem1);
